@@ -62,6 +62,7 @@ Slash commands in REPL:
 from __future__ import annotations
 
 import os
+import re
 import sys
 if sys.platform == "win32":
     os.system("")  # Enable ANSI escape codes on Windows CMD
@@ -1572,11 +1573,20 @@ def repl(config: dict, initial_prompt: str = None):
         prov_clr  = clr(f"({pname})", "dim")
         pmode     = clr(config.get("permission_mode", "auto"), "yellow")
         ver_clr   = clr(f"v{VERSION}", "green")
-        print(clr("╭─ Nano Claude Code ", "dim") + ver_clr + clr(" ─────────────────────────╮", "dim"))
-        print(clr("│  Model: ", "dim") + model_clr + " " + prov_clr)
-        print(clr("│  Permissions: ", "dim") + pmode)
-        print(clr("│  /model to switch provider · /help for commands │", "dim"))
-        print(clr("╰──────────────────────────────────────────────────╯", "dim"))
+        _top_left  = "╭─ Nano Claude Code "
+        _top_right = " ─────────────────────────╮"
+        _box_w     = len(_top_left) + len(f"v{VERSION}") + len(_top_right)
+
+        def _box_row(content: str) -> str:
+            vis_len = len(re.sub(r'\x1b\[[0-9;]*m', '', content))
+            pad     = _box_w - vis_len - 1
+            return content + " " * max(0, pad) + clr("│", "dim")
+
+        print(clr(_top_left, "dim") + ver_clr + clr(_top_right, "dim"))
+        print(_box_row(clr("│  Model: ", "dim") + model_clr + " " + prov_clr))
+        print(_box_row(clr("│  Permissions: ", "dim") + pmode))
+        print(_box_row(clr("│  /model to switch provider · /help for commands", "dim")))
+        print(clr("╰" + "─" * (_box_w - 2) + "╯", "dim"))
         print()
 
     query_lock = threading.Lock()
