@@ -2005,6 +2005,28 @@ def cmd_plan(args: str, state, config) -> bool:
     return ("__plan__", arg)
 
 
+def cmd_compact(args: str, state, config) -> bool:
+    """Manually compact conversation history.
+
+    /compact              — compact with default summarization
+    /compact <focus>      — compact with focus instructions
+    """
+    from compaction import manual_compact
+    focus = args.strip()
+
+    if focus:
+        info(f"Compacting with focus: {focus}")
+    else:
+        info("Compacting conversation...")
+
+    success, msg = manual_compact(state, config, focus=focus)
+    if success:
+        info(msg)
+    else:
+        err(msg)
+    return True
+
+
 COMMANDS = {
     "help":        cmd_help,
     "clear":       cmd_clear,
@@ -2034,6 +2056,7 @@ COMMANDS = {
     "checkpoint":  cmd_checkpoint,
     "rewind":      cmd_rewind,
     "plan":        cmd_plan,
+    "compact":     cmd_compact,
     "exit":        cmd_exit,
     "quit":        cmd_exit,
     "resume":      cmd_resume
@@ -2104,6 +2127,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "checkpoint":  ("List / restore checkpoints",          ["clear"]),
     "rewind":      ("Rewind to checkpoint (alias)",        ["clear"]),
     "plan":        ("Enter/exit plan mode",                ["done", "status"]),
+    "compact":     ("Compact conversation history",         []),
     "exit":        ("Exit nano-claude-code",              []),
     "quit":        ("Exit (alias for /exit)",             []),
     "resume":      ("Resume last session",                []),

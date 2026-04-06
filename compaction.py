@@ -107,7 +107,7 @@ def find_split_point(messages: list, keep_ratio: float = 0.3) -> int:
     return 0
 
 
-def compact_messages(messages: list, config: dict) -> list:
+def compact_messages(messages: list, config: dict, focus: str = "") -> list:
     """Compress old messages into a summary via LLM call.
 
     Splits at find_split_point, summarizes old portion, returns
@@ -116,6 +116,7 @@ def compact_messages(messages: list, config: dict) -> list:
     Args:
         messages: full message list
         config: agent config dict (must contain "model")
+        focus: optional focus instructions for the summarizer
     Returns:
         new compacted message list
     """
@@ -139,8 +140,11 @@ def compact_messages(messages: list, config: dict) -> list:
     summary_prompt = (
         "Summarize the following conversation history concisely. "
         "Preserve key decisions, file paths, tool results, and context "
-        "needed to continue the conversation:\n\n" + old_text
+        "needed to continue the conversation."
     )
+    if focus:
+        summary_prompt += f"\n\nFocus especially on: {focus}"
+    summary_prompt += "\n\n" + old_text
 
     # Call LLM for summary
     summary_text = ""
@@ -193,4 +197,44 @@ def maybe_compact(state, config: dict) -> bool:
 
     # Layer 2: auto-compact
     state.messages = compact_messages(state.messages, config)
+    state.messages.extend(_restore_plan_context(config))
     return True
+
+
+# ── Plan context restoration ─────────────────────────────────────────────
+
+def _restore_plan_context(config: dict) -> list:
+    """If in plan mode, return messages that restore plan file context."""
+    from pathlib import Path
+    plan_file = config.get("_plan_file", "")
+    if not plan_file or config.get("permission_mode") != "plan":
+        return []
+    p = Path(plan_file)
+    if not p.exists():
+        return []
+    content = p.read_text(encoding="utf-8").strip()
+    if not content:
+        return []
+    return [
+        {"role": "user", "content": f"[Plan file restored after compaction: {plan_file}]\n\n{content}"},
+        {"role": "assistant", "content": "I have the plan context. Let's continue."},
+    ]
+
+
+# ── Manual compact ───────────────────────────────────────────────────────
+
+def manual_compact(state, config: dict, focus: str = "") -> tuple[bool, str]:
+    """User-triggered compaction via /compact. Not gated by threshold.
+
+    Returns (success, info_message).
+    """
+    if len(state.messages) < 4:
+        return False, "Not enough messages to compact."
+
+    before = estimate_tokens(state.messages)
+    snip_old_tool_results(state.messages)
+    state.messages = compact_messages(state.messages, config, focus=focus)
+    state.messages.extend(_restore_plan_context(config))
+    after = estimate_tokens(state.messages)
+    saved = before - after
+    return True, f"Compacted: ~{before} → ~{after} tokens (~{saved} saved)"
