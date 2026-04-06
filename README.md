@@ -6,15 +6,16 @@ English | [中文](https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs
   </a>
 
   
-<h1 align="center" style="font-size: 30px;"><strong><em>Nano Claude Code</em></strong>: A Fast, Easy-to-Use Python Reimplementation of Claude Code Supporting Any Model</h1>
+<h1 align="center"><strong>🤖 Nano Claude Code</strong></h1>
+<p align="center"><strong>A Fast, Easy-to-Use Python Reimplementation of Claude Code Supporting Any Model</strong></p>
+
 <p align="center">
-    <a href="https://github.com/chauncygu/collection-claude-code-source-code">The newest source of Claude Code</a>
+    <a href="https://github.com/chauncygu/collection-claude-code-source-code">✨ Newest Source</a>
     ·
-    <a href="https://github.com/SafeRL-Lab/nano-claude-code/issues">Issue</a>
-  ·
-    <a href="https://deepwiki.com/SafeRL-Lab/nano-claude-code">Brief Intro</a>
-  
-  </p>
+    <a href="https://github.com/SafeRL-Lab/nano-claude-code/issues">🐞 Issues</a>
+    ·
+    <a href="https://deepwiki.com/SafeRL-Lab/nano-claude-code">📖 Brief Intro</a>
+</p>
 </div>
 
  <div align=center>
@@ -28,8 +29,17 @@ English | [中文](https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs
 
 
 
-## 🔥🔥🔥 News (Pacific Time)
+## 🚀 News (Pacific Time)
 
+- **03:43 PM, Apr 05, 2026 (v3.05.5)**: 🧠 **Reasoning, Rendering, and Packaging Improvements**
+  - 📷 **Native Vision Support**: Local Ollama models (`llava`, `gemma4`, `llama3.2-vision`) now supported via `/image [prompt]`.
+  - 📋 **Multi-line Paste Detection**: Text is now submitted as a single turn rather than multiple queries.
+  - 🧠 **Enhanced Memory System**: Conflict detection, re-ranking by confidence × recency, and AI-driven consolidation.
+  - ⚡ **Ollama Reasoning**: Native `<think>` block streaming for `deepseek-r1`, `qwen3`, and `gemma4`.
+  - 🛠️ **Infrastructure**: Moved `sounddevice` to optional `voice` extra; fixed ANSI dim color resets.
+
+- **00:41 PM, Apr 05, 2026 (v3.05.4)**: 📅 **Structured Session History**
+  - Sessions now auto-saved to dated directories; `/load` supports multi-select and merged history view.
 
 - 05:39 PM, Apr 05, 2026 (**v3.05.4**): **Reasoning, Rendering, and Packaging Improvements, Enhanced Memory System, Native vision support for local Ollama models, Bracketed Paste Mode, Rich Tab Completion**
   - **Bracketed Paste Mode** — replaced the old timing-based multi-line paste detection with the standard terminal Bracketed Paste Mode protocol. Pasted text of any length (code blocks, long prompts, multi-paragraph instructions) is now collected as a single turn with zero latency and no blank-line artifacts. Falls back to a 60 ms timing window for terminals that don't support BPM. Bracketed paste mode is cleanly disabled on REPL exit.
@@ -177,7 +187,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 ---
 
-## Features
+## 🛠️ Features
 
 | Feature | Details |
 |---|---|
@@ -212,32 +222,16 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 ## Supported Models
 
-### Closed-Source (API)
+### ☁️ Closed-Source (API)
 
-| Provider | Model | Context | Strengths | API Key Env |
-|---|---|---|---|---|
-| **Anthropic** | `claude-opus-4-6` | 200k | Most capable, best for complex reasoning | `ANTHROPIC_API_KEY` |
-| **Anthropic** | `claude-sonnet-4-6` | 200k | Balanced speed & quality | `ANTHROPIC_API_KEY` |
-| **Anthropic** | `claude-haiku-4-5-20251001` | 200k | Fast, cost-efficient | `ANTHROPIC_API_KEY` |
-| **OpenAI** | `gpt-4o` | 128k | Strong multimodal & coding | `OPENAI_API_KEY` |
-| **OpenAI** | `gpt-4o-mini` | 128k | Fast, cheap | `OPENAI_API_KEY` |
-| **OpenAI** | `o3-mini` | 200k | Strong reasoning | `OPENAI_API_KEY` |
-| **OpenAI** | `o1` | 200k | Advanced reasoning | `OPENAI_API_KEY` |
-| **Google** | `gemini-2.5-pro-preview-03-25` | 1M | Long context, multimodal | `GEMINI_API_KEY` |
-| **Google** | `gemini-2.0-flash` | 1M | Fast, large context | `GEMINI_API_KEY` |
-| **Google** | `gemini-1.5-pro` | 2M | Largest context window | `GEMINI_API_KEY` |
-| **Moonshot (Kimi)** | `moonshot-v1-8k` | 8k | Chinese & English | `MOONSHOT_API_KEY` |
-| **Moonshot (Kimi)** | `moonshot-v1-32k` | 32k | Chinese & English | `MOONSHOT_API_KEY` |
-| **Moonshot (Kimi)** | `moonshot-v1-128k` | 128k | Long context | `MOONSHOT_API_KEY` |
-| **Alibaba (Qwen)** | `qwen-max` | 32k | Best Qwen quality | `DASHSCOPE_API_KEY` |
-| **Alibaba (Qwen)** | `qwen-plus` | 128k | Balanced | `DASHSCOPE_API_KEY` |
-| **Alibaba (Qwen)** | `qwen-turbo` | 1M | Fast, cheap | `DASHSCOPE_API_KEY` |
-| **Alibaba (Qwen)** | `qwq-32b` | 32k | Strong reasoning | `DASHSCOPE_API_KEY` |
-| **Zhipu (GLM)** | `glm-4-plus` | 128k | Best GLM quality | `ZHIPU_API_KEY` |
-| **Zhipu (GLM)** | `glm-4` | 128k | General purpose | `ZHIPU_API_KEY` |
-| **Zhipu (GLM)** | `glm-4-flash` | 128k | Free tier available | `ZHIPU_API_KEY` |
-| **DeepSeek** | `deepseek-chat` | 64k | Strong coding | `DEEPSEEK_API_KEY` |
-| **DeepSeek** | `deepseek-reasoner` | 64k | Chain-of-thought reasoning | `DEEPSEEK_API_KEY` |
+| Provider | Model | Context | Key Strengths |
+|---|---|---|---|
+| **Anthropic** | `claude-3-5-sonnet` | 200k | Best-in-class coding & reasoning |
+| **OpenAI** | `gpt-4o`, `o1` | 128k+ | Strong multimodal & logic |
+| **Google** | `gemini-2.0-flash` | 1M+ | Massive context window |
+| **DeepSeek** | `deepseek-reasoner` | 64k | SOTA open-weights reasoning |
+| **Kimi / Qwen** | `moonshot-v1`, `qwen-max` | 128k | Strong multi-lingual support |
+| **Zhipu** | `glm-4-plus` | 128k | Top-tier performance in Asia |
 
 ### Open-Source (Local via Ollama)
 
@@ -263,29 +257,23 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 ---
 
-## Installation
+## 📦 Installation
 
-### Recommended: install as a global command with `uv`
-
-[uv](https://docs.astral.sh/uv/) installs `nano_claude` into an isolated environment and puts it on your PATH so you can run it from anywhere:
+### 🚀 Recommended: Global install with `uv`
+[uv](https://docs.astral.sh/uv/) is the fastest way to get started. It installs `nano_claude` into an isolated environment and adds it to your PATH automatically.
 
 ```bash
 # Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and install
-git clone <repo-url>
+git clone https://github.com/SafeRL-Lab/nano-claude-code
 cd nano-claude-code
 uv tool install .
 ```
 
-After that, `nano_claude` is available as a global command:
-
-```bash
-nano_claude                        # start REPL
-nano_claude --model gpt-4o         # choose a model
-nano_claude -p "explain this"      # non-interactive
-```
+> [!TIP]
+> After installation, you can run **`nano_claude`** from any directory! ✨
 
 To update after pulling new code:
 
@@ -299,26 +287,29 @@ To uninstall:
 uv tool uninstall nano-claude-code
 ```
 
-### Alternative: run directly from the repo
+### 🐍 Alternative: Run directly from source
+If you prefer a standard Python setup:
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/SafeRL-Lab/nano-claude-code
 cd nano-claude-code
 
+# Install core dependencies
 pip install -r requirements.txt
-# or manually (sounddevice is optional — only needed for /voice):
-pip install anthropic openai httpx rich
-pip install sounddevice  # optional: voice input
 
-python nano_claude.py
+# Install optional features
+pip install ".[vision]"   # 📷 Vision support (Pillow)
+pip install ".[voice]"    # 🎙️ Voice support (whisper/sounddevice)
 ```
+
+> [!NOTE]
+> Linux users also need `xclip` for vision: `sudo apt install xclip`.
 
 ---
 
-## Usage: Closed-Source API Models
+## 📖 Usage: Closed-Source API Models
 
-### Anthropic Claude
-
+### 🗼 Anthropic Claude
 Get your API key at [console.anthropic.com](https://console.anthropic.com).
 
 ```bash
@@ -335,8 +326,7 @@ nano_claude --model claude-haiku-4-5-20251001
 nano_claude --model claude-opus-4-6 --thinking --verbose
 ```
 
-### OpenAI GPT
-
+### 🦾 OpenAI GPT
 Get your API key at [platform.openai.com](https://platform.openai.com).
 
 ```bash
@@ -348,8 +338,7 @@ nano_claude --model gpt-4.1-mini
 nano_claude --model o3-mini
 ```
 
-### Google Gemini
-
+### 🌌 Google Gemini
 Get your API key at [aistudio.google.com](https://aistudio.google.com).
 
 ```bash
@@ -635,31 +624,18 @@ nano_claude --thinking --verbose
 
 ---
 
-## Slash Commands (REPL)
+## 🕹️ Slash Commands (REPL)
 
 Type `/` and press **Tab** to see all commands with descriptions. Continue typing to filter, then Tab again to auto-complete. After a command name, press **Tab** again to see its subcommands (e.g. `/plugin ` → `install`, `uninstall`, `enable`, …).
 
 | Command | Description |
 |---|---|
-| `/help` | Show all commands |
-| `/clear` | Clear conversation history |
-| `/model` | Show current model + list all available models |
-| `/model <name>` | Switch model (takes effect immediately) |
-| `/config` | Show all current config values |
-| `/config key=value` | Set a config value (persisted to disk) |
-| `/save` | Save session (auto-named by timestamp) |
-| `/save <filename>` | Save session to named file |
-| `/load` | Interactive list grouped by date; enter number, `1,2,3` to merge, or `H` for full history |
-| `/load <filename>` | Load a saved session by filename |
-| `/resume` | Restore the last auto-saved session (`mr_sessions/session_latest.json`) |
-| `/resume <filename>` | Load a specific file from `mr_sessions/` (or absolute path) |
-| `/history` | Print full conversation history |
-| `/context` | Show message count and token estimate |
-| `/cost` | Show token usage and estimated USD cost |
-| `/verbose` | Toggle verbose mode (tokens + thinking) |
-| `/thinking` | Toggle Extended Thinking (Claude only) |
-| `/permissions` | Show current permission mode |
-| `/permissions <mode>` | Set permission mode: `auto` / `accept-all` / `manual` |
+| 📡 **Session** | `/save`, `/load`, `/resume`, `/clear`, `/history` |
+| 🧠 **intelligence** | `/model`, `/verbose`, `/thinking`, `/context`, `/cost` |
+| 📂 **Project** | `/cwd`, `/permissions`, `/config` |
+| 🚀 **Features** | `/memory`, `/skills`, `/agents`, `/mcp`, `/voice`, `/image`, `/proactive` |
+| ☁️ **Cloud** | `/cloudsave` |
+| 🚪 **Exit** | `/exit`, `/quit` |
 | `/cwd` | Show current working directory |
 | `/cwd <path>` | Change working directory |
 | `/memory` | List all persistent memories |

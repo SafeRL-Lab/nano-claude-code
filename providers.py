@@ -21,6 +21,7 @@ Model string formats:
 """
 from __future__ import annotations
 import json
+import urllib.request
 from typing import Generator
 
 # ── Provider registry ──────────────────────────────────────────────────────
@@ -500,9 +501,6 @@ def stream_ollama(
     tool_schemas: list,
     config: dict,
 ) -> Generator:
-    import urllib.request
-    import json
-
     # pass_images=True: Ollama /api/chat accepts base64 images natively in the message
     oai_messages = [{"role": "system", "content": system}] + messages_to_openai(messages, pass_images=True)
     
@@ -616,3 +614,15 @@ def stream(
         yield from stream_openai_compat(
             api_key, base_url, model_name, system, messages, tool_schemas, config
         )
+
+
+def list_ollama_models(base_url: str) -> list[str]:
+    """Fetch locally available model tags from Ollama server."""
+    try:
+        url = f"{base_url.rstrip('/')}/api/tags"
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            # Ollama returns {"models": [{"name": "llama3:latest", ...}, ...]}
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []

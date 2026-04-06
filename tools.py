@@ -355,12 +355,14 @@ def _read(file_path: str, limit: int = None, offset: int = None) -> str:
     if p.is_dir():
         return f"Error: {file_path} is a directory"
     try:
-        lines = p.read_text(errors="replace").splitlines(keepends=True)
+        # Explicitly use utf-8 and newline="" to avoid encoding/line-ending mismatches
+        lines = p.read_text(encoding="utf-8", errors="replace", newline="").splitlines(keepends=True)
         start = offset or 0
         chunk = lines[start:start + limit] if limit else lines[start:]
         if not chunk:
             return "(empty file)"
-        return "".join(f"{start + i + 1}\t{l}" for i, l in enumerate(chunk))
+        # Use standard 6-char padding for line numbers, matching Claude's expected format
+        return "".join(f"{start + i + 1:6}\t{l}" for i, l in enumerate(chunk))
     except Exception as e:
         return f"Error: {e}"
 
@@ -369,9 +371,11 @@ def _write(file_path: str, content: str) -> str:
     p = Path(file_path)
     try:
         is_new = not p.exists()
-        old_content = "" if is_new else p.read_text(errors="replace")
+        # Ensure utf-8 and newline="" for reading existing content to generate diff
+        old_content = "" if is_new else p.read_text(encoding="utf-8", errors="replace", newline="")
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content)
+        # Always write as utf-8 with newline="" to prevent double CRLF on Windows
+        p.write_text(content, encoding="utf-8", newline="")
         if is_new:
             lc = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
             return f"Created {file_path} ({lc} lines)"
@@ -390,9 +394,13 @@ def _edit(file_path: str, old_string: str, new_string: str, replace_all: bool = 
     if not p.exists():
         return f"Error: file not found: {file_path}"
     try:
-        content = p.read_text(encoding="utf-8", errors="replace")
+        # Read with newline="" to get original line endings
+        content = p.read_text(encoding="utf-8", errors="replace", newline="")
         
-        # Normalize line endings to avoid \r\n vs \n mismatch on Windows
+        # Detect original line endings to preserve them after edit
+        is_crlf = "\r\n" in content
+        
+        # Normalize line endings to avoid \r\n vs \n mismatch during matching
         content_norm = content.replace("\r\n", "\n")
         old_norm = old_string.replace("\r\n", "\n")
         new_norm = new_string.replace("\r\n", "\n")
@@ -404,13 +412,22 @@ def _edit(file_path: str, old_string: str, new_string: str, replace_all: bool = 
             return (f"Error: old_string appears {count} times. "
                     "Provide more context to make it unique, or use replace_all=true.")
                     
-        old_content = content_norm
-        new_content = content_norm.replace(old_norm, new_norm) if replace_all else \
-                      content_norm.replace(old_norm, new_norm, 1)
+        old_content_norm = content_norm
+        new_content_norm = content_norm.replace(old_norm, new_norm) if replace_all else \
+                           content_norm.replace(old_norm, new_norm, 1)
+        
+        # Restore CRLF if the file originally used it
+        if is_crlf:
+            final_content = new_content_norm.replace("\n", "\r\n")
+            old_content_final = content
+        else:
+            final_content = new_content_norm
+            old_content_final = content_norm
                       
-        p.write_text(new_content, encoding="utf-8")
+        # Write with newline="" to prevent double CRLF translation on Windows
+        p.write_text(final_content, encoding="utf-8", newline="")
         filename = p.name
-        diff = generate_unified_diff(old_content, new_content, filename)
+        diff = generate_unified_diff(old_content_final, final_content, filename)
         return f"Changes applied to {filename}:\n\n{diff}"
     except Exception as e:
         return f"Error: {e}"

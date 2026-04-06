@@ -288,40 +288,220 @@ def cmd_help(_args: str, _state, _config) -> bool:
     print(__doc__)
     return True
 
+def cmd_model(args: str, _state, config) -> bool:
+    from providers import detect_provider, PROVIDERS
+    m = args.strip().replace(":", "/", 1)
+    if not m:
+        pname = detect_provider(config["model"])
+        curr  = clr(config["model"], "green", "bold")
+        print(f"Current model: {curr} (provider: {pname})")
+        print(clr("\nPredefined models (use /model <name>):", "dim"))
+        for p, d in PROVIDERS.items():
+            mods = ", ".join(d.get("models", []))
+            if mods:
+                print(f"  {clr(p+':', 'yellow'):12s} {mods}")
+        return True
+
+    pname = detect_provider(m)
+
+    config["model"] = m
+    from config import save_config
+    save_config(config)
+    ok(f"Model set to {clr(m, 'bold')}  (provider: {pname})")
+    return True
+
+def _interactive_ollama_picker(config: dict) -> bool:
+    """Prompt the user to select from locally available Ollama models."""
+    from providers import PROVIDERS, list_ollama_models
+    prov = PROVIDERS.get("ollama", {})
+    base_url = prov.get("base_url", "http://localhost:11434")
+    
+    models = list_ollama_models(base_url)
+    if not models:
+        err(f"No local Ollama models found at {base_url}.")
+        return False
+        
+    print(clr("\n  ── Local Ollama Models ──", "dim"))
+    for i, m in enumerate(models):
+        print(clr(f"  [{i+1:2d}] ", "yellow") + m)
+    print()
+    
+    try:
+        ans = input(clr("  Select a model number or Enter to cancel > ", "cyan")).strip()
+        if not ans: return False
+        idx = int(ans) - 1
+        if 0 <= idx < len(models):
+            new_model = f"ollama/{models[idx]}"
+            config["model"] = new_model
+            from config import save_config
+            save_config(config)
+            ok(f"Model updated to {new_model}")
+            return True
+        else:
+            err("Invalid selection.")
+    except (ValueError, KeyboardInterrupt, EOFError):
+        pass
+    return False
+
+def cmd_brainstorm(args: str, state, config) -> bool:
+    """Run a multi-persona iterative brainstorming session on the project.
+    
+    Usage: /brainstorm [topic]
+    """
+    from providers import stream
+    import time
+    from pathlib import Path
+    
+    # ── Context Snapshot ──────────────────────────────────────────────────
+    readme_path = Path("README.md")
+    readme_content = ""
+    if readme_path.exists():
+        readme_content = readme_path.read_text("utf-8", errors="replace")
+    
+    claude_md = Path("CLAUDE.md")
+    claude_content = ""
+    if claude_md.exists():
+        claude_content = claude_md.read_text("utf-8", errors="replace")
+        
+    project_files = "\n".join([f.name for f in Path(".").glob("*") if f.is_file() and not f.name.startswith(".")])
+    
+    user_topic = args.strip() or "general project improvement and architectural evolution"
+    
+    snapshot = f"""PROJECT CONTEXT:
+README:
+{readme_content[:3000]}
+
+CLAUDE.MD:
+{claude_content[:1000]}
+
+ROOT FILES:
+{project_files}
+
+USER FOCUS: {user_topic}
+"""
+    # ── Personas ──────────────────────────────────────────────────────────
+    personas = {
+        "architect": {
+            "role": "Principal Software Architect",
+            "desc": "Focus on modularity, clear boundaries, patterns, and long-term maintainability."
+        },
+        "innovator": {
+            "role": "Pragmatic Product Innovator",
+            "desc": "Focus on bold, technically feasible ideas that add high user value and differentiation."
+        },
+        "security": {
+            "role": "Security & Risk Engineer",
+            "desc": "Focus on vulnerabilities, data integrity, secrets handling, and project robustness."
+        },
+        "refactor": {
+            "role": "Senior Code Quality Lead",
+            "desc": "Focus on code smells, complexity reduction, DRY principles, and readability."
+        },
+        "performance": {
+            "role": "Performance & Optimization Specialist",
+            "desc": "Focus on I/O bottlenecks, resource efficiency, latency, and scalability."
+        }
+    }
+    
+    # ── Identity Generator ────────────────────────────────────────────────
+    def get_identity(letter):
+        try:
+            from faker import Faker
+            fake = Faker()
+            return f"{letter}", fake.name()
+        except:
+            first = ["Alex", "Sam", "Taylor", "Jordan", "Casey", "Riley", "Drew", "Avery"]
+            last = ["Garcia", "Martinez", "Lopez", "Hernandez", "Gonzalez", "Sanchez", "Ramirez", "Torres"]
+            import random
+            return f"{letter}", f"{random.choice(first)} {random.choice(last)}"
+            
+    # ── Debate Loop ───────────────────────────────────────────────────────
+    outputs_dir = Path("brainstorm_outputs")
+    outputs_dir.mkdir(exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    out_file = outputs_dir / f"brainstorm_{ts}.md"
+    
+    brainstorm_history = []
+    
+    ok(f"Starting Multi-Agent Brainstorming Session on: {clr(user_topic, 'bold')}")
+    info(clr("Generating diverse architectural perspectives...", "dim"))
+    
+    curr_model = config["model"]
+
+    # Helper function to call the model via the unified stream() function
+    def call_persona(persona_name, p_data, history):
+        letter, name = get_identity(persona_name[0].upper())
+        # We wrap the persona instructions into a 'system' role
+        system_prompt = f"""You are {name}, the {p_data['role']}. Identity: Agente {letter}.
+{p_data['desc']}
+
+=== {snapshot} ===
+
+INSTRUCTIONS:
+1. Provide 3-5 concrete, actionable ideas based on your role.
+2. If there are prior ideas, analyze them briefly and build upon them or offer a different angle.
+3. Be specific, technical, and professional.
+4. Prefix each of your ideas with: [Agente {letter} — {name}]
+5. Output your response in clean Markdown.
+"""
+        user_msg = f"PRIOR IDEAS FROM DEBATE:\n{history or 'No previous ideas yet. You are the first to speak.'}"
+        
+        full_response = []
+        # Internal calls should not stream to stdout or include tools
+        internal_config = config.copy()
+        internal_config["stream"] = False
+        internal_config["no_tools"] = True
+        
+        try:
+            from providers import TextChunk
+            for event in stream(curr_model, system_prompt, [{"role": "user", "content": user_msg}], [], internal_config):
+                if isinstance(event, TextChunk):
+                    full_response.append(event.text)
+        except Exception as e:
+            return f"Error from Agent {letter}: {e}"
+            
+        return "".join(full_response).strip()
+
+    full_log = [f"# Brainstorming Session: {user_topic}", f"**Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}", f"**Model:** {curr_model}", "---"]
+    
+    progress_icons = ["🏗️", "💡", "🛡️", "🔧", "⚡"]
+    for i, (p_name, p_data) in enumerate(personas.items()):
+        icon = progress_icons[i]
+        info(f"{icon} {clr(p_data['role'], 'yellow')} is thinking...")
+        
+        hist_text = "\n\n".join(brainstorm_history) if brainstorm_history else ""
+        content = call_persona(p_name, p_data, hist_text)
+        
+        if content:
+            brainstorm_history.append(content)
+            full_log.append(f"## {icon} {p_data['role']}\n{content}")
+            # Horizontal feedback line
+            print(clr("  └─ Perspective captured.", "dim"))
+        else:
+            err(f"  └─ Failed to capture {p_name} perspective.")
+
+    # Save to file
+    final_output = "\n\n".join(full_log)
+    out_file.write_text(final_output, encoding="utf-8")
+    
+    ok(f"Brainstorming complete! Results saved to {clr(str(out_file), 'bold')}")
+    
+    # ── Synthetic Injection ──────────────────────────────────────────────
+    info(clr("Injecting debate results into current session for final analysis...", "dim"))
+
+    synthesis_prompt = f"""I have just completed a multi-agent brainstorming session regarding: '{user_topic}'.
+The full debate results have been saved to the file: {out_file}
+
+Please read that file, then analyze the diverse perspectives. Identify the strongest ideas, potential conflicts, and provide a synthesized 'Master Plan' with concrete phases. Be concise and actionable."""
+
+    # Return sentinel to trigger synthesis via run_query in the main REPL loop
+    # (run_query already appends to state.messages, so no manual append here)
+    return ("__brainstorm__", synthesis_prompt)
+
 def cmd_clear(_args: str, state, _config) -> bool:
     state.messages.clear()
     state.turn_count = 0
     ok("Conversation cleared.")
-    return True
-
-def cmd_model(args: str, _state, config) -> bool:
-    from providers import PROVIDERS, detect_provider
-    if not args:
-        model = config["model"]
-        pname = detect_provider(model)
-        info(f"Current model:    {model}  (provider: {pname})")
-        info("\nAvailable models by provider:")
-        for pn, pdata in PROVIDERS.items():
-            ms = pdata.get("models", [])
-            if ms:
-                info(f"  {pn:12s}  " + ", ".join(ms[:4]) + ("..." if len(ms) > 4 else ""))
-        info("\nFormat: 'provider/model' or just model name (auto-detected)")
-        info("  e.g. /model gpt-4o")
-        info("  e.g. /model ollama/qwen2.5-coder")
-        info("  e.g. /model kimi:moonshot-v1-32k")
-    else:
-        # Accept both "ollama/model" and "ollama:model" syntax
-        # Only treat ':' as provider separator if left side is a known provider
-        m = args.strip()
-        if "/" not in m and ":" in m:
-            left, right = m.split(":", 1)
-            if left in PROVIDERS:
-                m = f"{left}/{right}"
-        config["model"] = m
-        pname = detect_provider(m)
-        ok(f"Model set to {m}  (provider: {pname})")
-        from config import save_config
-        save_config(config)
     return True
 
 def cmd_config(args: str, _state, config) -> bool:
@@ -1500,6 +1680,7 @@ COMMANDS = {
     "cloudsave":   cmd_cloudsave,
     "voice":       cmd_voice,
     "image":       cmd_image,
+    "brainstorm":  cmd_brainstorm,
     "exit":        cmd_exit,
     "quit":        cmd_exit,
     "resume":      cmd_resume
@@ -1518,8 +1699,8 @@ def handle_slash(line: str, state, config) -> Union[bool, tuple]:
     handler = COMMANDS.get(cmd)
     if handler:
         result = handler(args, state, config)
-        # cmd_voice/cmd_image return sentinels to ask the REPL to run_query
-        if isinstance(result, tuple) and result[0] in ("__voice__", "__image__"):
+        # cmd_voice/cmd_image/cmd_brainstorm return sentinels to ask the REPL to run_query
+        if isinstance(result, tuple) and result[0] in ("__voice__", "__image__", "__brainstorm__"):
             return result
         return True
 
@@ -1666,7 +1847,7 @@ def repl(config: dict, initial_prompt: str = None):
         print(clr("╰" + "─" * (_box_w - 2) + "╯", "dim"))
         print()
 
-    query_lock = threading.Lock()
+    query_lock = threading.RLock()
     
     # Initialize proactive polling state in config (avoids module-level globals)
     config.setdefault("_proactive_enabled", False)
@@ -1695,44 +1876,59 @@ def repl(config: dict, initial_prompt: str = None):
 
             thinking_started = False
 
-            for event in run(user_input, state, config, system_prompt):
-                if isinstance(event, TextChunk):
-                    if thinking_started:
-                        print("\033[0m\n")  # Reset dim ANSI + break line after thinking block
-                        thinking_started = False
-                    # stream_text auto-starts Live on first chunk when Rich available
-                    stream_text(event.text)
+            try:
+                for event in run(user_input, state, config, system_prompt):
+                    if isinstance(event, TextChunk):
+                        if thinking_started:
+                            print("\033[0m\n")  # Reset dim ANSI + break line after thinking block
+                            thinking_started = False
+                        # stream_text auto-starts Live on first chunk when Rich available
+                        stream_text(event.text)
 
-                elif isinstance(event, ThinkingChunk):
-                    if verbose:
-                        if not thinking_started:
-                            flush_response()  # stop Live before printing static thinking
-                            print(clr("\n  [thinking]", "dim"))
-                            thinking_started = True
-                        stream_thinking(event.text, verbose)
+                    elif isinstance(event, ThinkingChunk):
+                        if verbose:
+                            if not thinking_started:
+                                flush_response()  # stop Live before printing static thinking
+                                print(clr("\n  [thinking]", "dim"))
+                                thinking_started = True
+                            stream_thinking(event.text, verbose)
 
-                elif isinstance(event, ToolStart):
-                    flush_response()  # stop Live, commit text so far
-                    print_tool_start(event.name, event.inputs, verbose)
+                    elif isinstance(event, ToolStart):
+                        flush_response()  # stop Live, commit text so far
+                        print_tool_start(event.name, event.inputs, verbose)
 
-                elif isinstance(event, PermissionRequest):
-                    flush_response()  # stop Live before interactive prompt
-                    event.granted = ask_permission_interactive(event.description, config)
-                    # Live will restart automatically on next TextChunk
+                    elif isinstance(event, PermissionRequest):
+                        flush_response()  # stop Live before interactive prompt
+                        event.granted = ask_permission_interactive(event.description, config)
+                        # Live will restart automatically on next TextChunk
 
-                elif isinstance(event, ToolEnd):
-                    print_tool_end(event.name, event.result, verbose)
-                    if not _RICH:
-                        print(clr("│ ", "dim"), end="", flush=True)
-                    # Live will restart automatically on next TextChunk
+                    elif isinstance(event, ToolEnd):
+                        print_tool_end(event.name, event.result, verbose)
+                        if not _RICH:
+                            print(clr("│ ", "dim"), end="", flush=True)
+                        # Live will restart automatically on next TextChunk
 
-                elif isinstance(event, TurnDone):
-                    if verbose:
-                        flush_response()  # stop Live before printing token info
-                        print(clr(
-                            f"\n  [tokens: +{event.input_tokens} in / "
-                            f"+{event.output_tokens} out]", "dim"
-                        ))
+                    elif isinstance(event, TurnDone):
+                        if verbose:
+                            flush_response()  # stop Live before printing token info
+                            print(clr(
+                                f"\n  [tokens: +{event.input_tokens} in / "
+                                f"+{event.output_tokens} out]", "dim"
+                            ))
+            except Exception as e:
+                import urllib.error
+                # Catch 404 Not Found (Ollama model missing)
+                if isinstance(e, urllib.error.HTTPError) and e.code == 404:
+                    from providers import detect_provider
+                    if detect_provider(config["model"]) == "ollama":
+                        flush_response()
+                        err(f"Ollama model '{config['model']}' not found.")
+                        if _interactive_ollama_picker(config):
+                            # Remove the user message added by run() before retrying
+                            if state.messages and state.messages[-1]["role"] == "user":
+                                state.messages.pop()
+                            return run_query(user_input, is_background)
+                raise e
 
             flush_response()  # stop Live, commit any remaining text
             print(clr("╰──────────────────────────────────────────────", "dim"))
@@ -1885,6 +2081,15 @@ def repl(config: dict, initial_prompt: str = None):
                 _, image_prompt = result
                 try:
                     run_query(image_prompt)
+                except KeyboardInterrupt:
+                    print(clr("\n  (interrupted)", "yellow"))
+                continue
+            # Brainstorm sentinel: ("__brainstorm__", synthesis_prompt)
+            if result[0] == "__brainstorm__":
+                _, brain_prompt = result
+                print(clr("\n  ── Analysis from Main Agent ──", "dim"))
+                try:
+                    run_query(brain_prompt)
                 except KeyboardInterrupt:
                     print(clr("\n  (interrupted)", "yellow"))
                 continue
