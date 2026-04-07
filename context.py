@@ -98,7 +98,7 @@ Installed+enabled plugins' tools are available automatically in this session.
 - Current date: {date}
 - Working directory: {cwd}
 - Platform: {platform}
-{git_info}{claude_md}"""
+{platform_hints}{git_info}{claude_md}"""
 
 
 def get_git_info() -> str:
@@ -156,12 +156,35 @@ def get_claude_md() -> str:
     return "\n# Memory / CLAUDE.md\n" + "\n\n".join(content_parts) + "\n"
 
 
+def get_platform_hints() -> str:
+    """Return shell hints tailored to the current OS."""
+    import platform as _plat
+    if _plat.system() == "Windows":
+        return (
+            "\n## Windows Shell Hints\n"
+            "You are on Windows. Do NOT use Unix commands. Use these instead:\n"
+            "- `type file.txt` instead of `cat file.txt`\n"
+            "- `type file.txt | findstr /n /i \"pattern\"` instead of `grep`\n"
+            "- `powershell -Command \"Get-Content file.txt -Tail 20\"` instead of `tail -n 20`\n"
+            "- `powershell -Command \"Get-Content file.txt -Head 20\"` instead of `head -n 20`\n"
+            "- `dir /s /b *.py` or `powershell -Command \"Get-ChildItem -Recurse -Filter *.py\"` instead of `find . -name '*.py'`\n"
+            "- `del file.txt` instead of `rm file.txt`\n"
+            "- `mkdir folder` works on both (no -p needed)\n"
+            "- `copy` / `move` instead of `cp` / `mv`\n"
+            "- Use `&&` to chain commands, not `;`\n"
+            "- Paths use backslashes `\\` but forward slashes `/` also work in most cases\n"
+            "- Python is available: `python -c \"...\"` works for complex text processing\n"
+        )
+    return ""
+
+
 def build_system_prompt(config: dict | None = None) -> str:
     import platform
     prompt = SYSTEM_PROMPT_TEMPLATE.format(
         date=datetime.now().strftime("%Y-%m-%d %A"),
         cwd=str(Path.cwd()),
         platform=platform.system(),
+        platform_hints=get_platform_hints(),
         git_info=get_git_info(),
         claude_md=get_claude_md(),
     )
