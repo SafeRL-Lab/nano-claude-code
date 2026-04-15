@@ -109,15 +109,6 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
   - **`/monitor` interactive wizard input fix** (all three bridges) — When the `/monitor` wizard sends a menu to a bridge and waits for user input, the next message from the user was incorrectly treated as a new AI query. Each bridge's poll loop now checks `session_ctx.tg/slack/wx_input_event` before dispatching to the AI — wizard replies are correctly routed back to the waiting prompt.
   - **Version bumped to 3.05.65.**
 
-- Apr 12, 2026 (**v3.05.64**): **`/monitor` — AI subscription system & `/agent` task template system for auto research**
-  - **`/monitor` wizard** — typing `/monitor` with no arguments launches an interactive setup wizard: live subscription list, numbered menu (add subscription / run now / start-stop scheduler / remove / configure notifications), zero memorization required. Works in terminal and all three bridges.
-  - **`monitor/` package** — `fetchers.py` (arxiv RSS + weekend API fallback · Yahoo Finance · CoinGecko · Reuters/BBC/AP RSS · DuckDuckGo), `summarizer.py` (AI summarization via `providers.stream()`), `notifier.py` (Telegram / Slack / console delivery), `scheduler.py` (background daemon, `daily` / `6h` / `30m` schedules), `store.py` (persistent subscriptions at `~/.cheetahclaws/monitor_subscriptions.json`).
-  - **`/subscribe <topic> [schedule] [--telegram] [--slack]`** — subscribe to `ai_research`, `stock_TSLA`, `crypto_BTC`, `world_news`, or `custom:<query>`. Schedule defaults to `daily`; delivery defaults to configured channels.
-  - **`/agent` wizard** — `/agent` with no args launches the autonomous agent wizard (Research Assistant / Auto Bug Fixer / Paper Writer / Auto Coder / Custom); walks through template-specific questions, confirms, then starts the loop in a background thread.
-  - **`agent_runner.py`** — isolated `AgentState` per runner, calls `agent.run()` per iteration, auto-approves permissions, pushes iteration summaries via active bridge, persists to `~/.cheetahclaws/agents/<name>/log.jsonl`.
-  - **4 built-in agent templates** (`agent_templates/`): `research_assistant`, `auto_bug_fixer`, `paper_writer`, `auto_coder` — Markdown-driven program.md style (inspired by Karpathy's autoresearch).
-  - **Job queue & remote control** (all three bridges) — persistent job registry (`jobs.py`, `~/.cheetahclaws/jobs.json`); new bridge commands: `!jobs` / `!j` (dashboard), `!job <id>` (detail), `!retry <id>` (re-run failed job), `!cancel [id]` (stop job); per-bridge queue (FIFO when AI is busy); `on_tool_start` / `on_tool_end` hooks wired in all three bridges for live step tracking.
-  - **Version bumped to 3.05.64.**
 
 
 
