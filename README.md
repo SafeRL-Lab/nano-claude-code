@@ -20,6 +20,22 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
 </div>
 
 
+### Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SafeRL-Lab/cheetahclaws/main/scripts/install.sh | bash
+```
+
+After installation:
+
+```bash
+source ~/.zshrc     # macOS
+# or: source ~/.bashrc   # Linux
+cheetahclaws        # start chatting!
+```
+
+Other install methods: [pip install](#alternative-install-with-pip) | [uv install](#alternative-install-with-uv) | [run from source](#alternative-run-directly-from-source-no-install) | [full details](#installation)
+
  <div align=center>
  <img src="https://github.com/SafeRL-Lab/clawspring/blob/main/docs/demo.gif" width="850"/> 
  </div>
@@ -435,33 +451,30 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 curl -fsSL https://raw.githubusercontent.com/SafeRL-Lab/cheetahclaws/main/scripts/install.sh | bash
 ```
 
-Works on **Linux, macOS, WSL2, and Android (Termux)**. The installer checks for Python 3.10+, clones the repo, installs via pip, and adds `cheetahclaws` to your PATH.
+Works on **Linux, macOS, WSL2, and Android (Termux)**. The installer handles everything: checks Python 3.10+, clones the repo, installs via pip, and adds `cheetahclaws` to your PATH.
 
 After installation:
 
 ```bash
-source ~/.bashrc    # reload shell (or: source ~/.zshrc)
+source ~/.zshrc     # macOS (zsh)
+# or: source ~/.bashrc   # Linux (bash)
 cheetahclaws        # start chatting!
 ```
 
 First run will guide you through setup (pick provider, set API key). Or run `cheetahclaws --setup` anytime.
 
 > **Windows:** Native Windows is not supported. Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and run the command above inside WSL.
+>
+> **Android / Termux:** The installer auto-detects Termux and skips incompatible optional dependencies. Manual install: `pkg install python git && pip install cheetahclaws`.
 
 ---
 
-### Alternative: install with `uv`
-
-[uv](https://docs.astral.sh/uv/) installs `cheetahclaws` into an isolated environment and puts it on your PATH so you can run it from anywhere:
+### Alternative: install with `pip`
 
 ```bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Clone and install
-git clone git@github.com:SafeRL-Lab/cheetahclaws.git
+git clone https://github.com/SafeRL-Lab/cheetahclaws.git
 cd cheetahclaws
-uv tool install .
+pip install .
 ```
 
 After that, `cheetahclaws` is available as a global command:
@@ -470,33 +483,58 @@ After that, `cheetahclaws` is available as a global command:
 cheetahclaws                        # start REPL
 cheetahclaws --model gpt-4o         # choose a model
 cheetahclaws -p "explain this"      # non-interactive
+cheetahclaws --setup                # re-run setup wizard
 ```
 
 To update after pulling new code:
 
 ```bash
-uv tool install . --reinstall
-```
-
-To uninstall:
-
-```bash
-uv tool uninstall cheetahclaws
-```
-
-### Alternative: run directly from the repo
-
-```bash
-git clone git@github.com:SafeRL-Lab/cheetahclaws.git
 cd cheetahclaws
+git pull
+pip install .
+```
 
+#### Optional extras
+
+```bash
+pip install ".[voice]"              # voice input (sounddevice)
+pip install ".[vision]"             # clipboard image capture (Pillow)
+pip install ".[autosuggest]"        # typing-time slash command autosuggest (prompt_toolkit)
+pip install ".[voice,vision,autosuggest]"   # all optional extras
+```
+
+---
+
+### Alternative: install with `uv`
+
+[uv](https://docs.astral.sh/uv/) installs `cheetahclaws` into an isolated environment and puts it on your PATH:
+
+```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and install
+git clone https://github.com/SafeRL-Lab/cheetahclaws.git
+cd cheetahclaws
+uv tool install .
+```
+
+To update: `uv tool install . --reinstall`
+
+To uninstall: `uv tool uninstall cheetahclaws`
+
+---
+
+### Alternative: run directly from source (no install)
+
+```bash
+git clone https://github.com/SafeRL-Lab/cheetahclaws.git
+cd cheetahclaws
 pip install -r requirements.txt
-# or manually (sounddevice is optional — only needed for /voice):
-pip install anthropic openai httpx rich
-pip install sounddevice  # optional: voice input
-
 python cheetahclaws.py
 ```
+
+This is useful for development — changes take effect immediately without reinstalling.
 
 ---
 
