@@ -38,7 +38,7 @@ def _bash(command: str, timeout: int = 30, cwd: str = None,
         )
     kwargs = dict(
         shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, cwd=cwd or os.getcwd(),
+        text=True, encoding='utf-8', errors='replace', cwd=cwd or os.getcwd(),
     )
     if sys.platform != "win32":
         kwargs["start_new_session"] = True
@@ -62,7 +62,7 @@ def _bash(command: str, timeout: int = 30, cwd: str = None,
 
 def _has_rg() -> bool:
     try:
-        subprocess.run(["rg", "--version"], capture_output=True, check=True)
+        subprocess.run(["rg", "--version"], capture_output=True, check=True, encoding='utf-8', errors='replace')
         return True
     except Exception:
         return False
@@ -94,7 +94,7 @@ def _grep(
     cmd.append(pattern)
     cmd.append(path or cwd or str(Path.cwd()))
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
         out = r.stdout.strip()
         return out[:20000] if out else "No matches found"
     except Exception as e:
