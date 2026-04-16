@@ -2,6 +2,7 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
 
 <br>
 
+Note: not finished yet, it is better to see the English version.
 
 
 <div align="center">
