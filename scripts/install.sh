@@ -28,7 +28,7 @@ fail()  { echo -e "${RED}[fail]${RESET} $*"; exit 1; }
 echo ""
 echo -e "${CYAN}  ╭──────────────────────────────────────────╮${RESET}"
 echo -e "${CYAN}  │     CheetahClaws Installer               │${RESET}"
-echo -e "${CYAN}  │     Fast AI Coding Assistant              │${RESET}"
+echo -e "${CYAN}  │     Fast AI Coding Assistant             │${RESET}"
 echo -e "${CYAN}  ╰──────────────────────────────────────────╯${RESET}"
 echo ""
 
@@ -207,8 +207,8 @@ fi
 VERSION=$(cheetahclaws --version 2>/dev/null || echo "installed")
 echo ""
 echo -e "${GREEN}  ╭──────────────────────────────────────────╮${RESET}"
-echo -e "${GREEN}  │  Installation complete!                   │${RESET}"
-echo -e "${GREEN}  │  ${VERSION}                               ${RESET}"
+echo -e "${GREEN}  │  Installation complete!                  │${RESET}"
+echo -e "${GREEN}  │  ${VERSION}                              │${RESET}"
 echo -e "${GREEN}  ╰──────────────────────────────────────────╯${RESET}"
 echo ""
 # Detect the user's shell for the reload hint
