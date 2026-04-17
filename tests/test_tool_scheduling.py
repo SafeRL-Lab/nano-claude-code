@@ -8,6 +8,9 @@ from tool_registry import (
     _SCHEDULING_PROPS,
 )
 
+# Trigger builtin tool registration
+import tools  # noqa: F401
+
 
 class TestSchedulingPropsInjection:
     def test_schemas_contain_scheduling_fields(self):
