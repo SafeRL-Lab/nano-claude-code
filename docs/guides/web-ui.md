@@ -2,6 +2,10 @@
 
 CheetahClaws ships with a production-ready browser UI built on a pure Python stdlib HTTP server plus nine small vanilla-JS modules — no Node.js, no bundler, no build step. This guide covers installation, accounts, the Chat UI, the PTY terminal, the full HTTP API, observability, and how the pieces fit together.
 
+<div align="center">
+ <img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/web_demo.gif" width="850" alt="Web UI demo — sidebar, tool cards, approval prompts, markdown streaming"/>
+</div>
+
 ---
 
 ## Install and launch
