@@ -72,7 +72,10 @@ def apply_gc(messages: list, gc_state: GCState) -> list:
 
     if gc_state.compact_xml:
         try:
-            from followup_compaction import compact_assistant_xml
+            try:
+                from followup_compaction import compact_assistant_xml
+            except ImportError:
+                compact_assistant_xml = None  # followup_compaction not available yet
             _compact_all = compact_assistant_xml
         except ImportError:
             pass
@@ -83,7 +86,10 @@ def apply_gc(messages: list, gc_state: GCState) -> list:
 
     if gc_state.trashed_ids:
         try:
-            from followup_compaction import compact_assistant_xml_selective
+            try:
+                from followup_compaction import compact_assistant_xml
+            except ImportError:
+                compact_assistant_xml = None  # followup_compaction not available yet
             _compact_selective = compact_assistant_xml_selective
         except ImportError:
             pass
