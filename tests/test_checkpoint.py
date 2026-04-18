@@ -458,29 +458,21 @@ class TestIntegration:
         assert state.turn_count == 0
 
 
-def test_cache_tokens_in_snapshot():
+def test_cache_tokens_in_snapshot(tmp_home):
     """Cache tokens flow from AgentState to checkpoint snapshot."""
     from agent import AgentState
     from checkpoint.store import make_snapshot
-    import inspect
 
     state = AgentState()
     state.total_input_tokens = 100
     state.total_output_tokens = 50
     state.total_cache_read_tokens = 30
     state.total_cache_write_tokens = 20
-    state.messages = []
+    state.messages = [{"role": "user", "content": "hi"}]
     state.turn_count = 1
 
-    # Call with correct signature (inspect to be safe)
-    sig = inspect.signature(make_snapshot)
-    params = list(sig.parameters.keys())
-    if len(params) == 1:
-        snapshot = make_snapshot(state)
-    else:
-        snapshot = make_snapshot(state, 1)
-
-    tokens = snapshot["token_snapshot"]
+    snap = make_snapshot("test_cache", state, {}, "hi")
+    tokens = snap.token_snapshot
 
     assert tokens["cache_read"] == 30, f"Expected 30, got {tokens.get('cache_read')}"
     assert tokens["cache_write"] == 20, f"Expected 20, got {tokens.get('cache_write')}"
