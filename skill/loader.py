@@ -33,6 +33,25 @@ def _get_skill_paths() -> list[Path]:
     ]
 
 
+def _iter_skill_files(skill_dir: Path):
+    """Yield skill markdown files found in `skill_dir`.
+
+    Supports both layouts:
+    - flat:  <skill_dir>/<name>.md
+    - nested: <skill_dir>/<name>/skill.md
+    """
+    if not skill_dir.is_dir():
+        return
+    yield from sorted(skill_dir.glob("*.md"))
+    for child in sorted(skill_dir.iterdir()):
+        if not child.is_dir():
+            continue
+        for candidate in (child / "skill.md", child / "SKILL.md"):
+            if candidate.exists():
+                yield candidate
+                break
+
+
 # ── List field parser ──────────────────────────────────────────────────────
 
 def _parse_list_field(value: str) -> list[str]:
@@ -140,7 +159,7 @@ def load_skills(include_builtins: bool = True) -> list[SkillDef]:
         src = "user" if i == 0 else "project"
         if not skill_dir.is_dir():
             continue
-        for md_file in sorted(skill_dir.glob("*.md")):
+        for md_file in _iter_skill_files(skill_dir):
             skill = _parse_skill_file(md_file, source=src)
             if skill:
                 seen[skill.name] = skill
