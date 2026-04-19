@@ -12,6 +12,7 @@ from tools import execute_tool
 import tools as _tools_init  # ensure built-in tools are registered on import
 from providers import stream, AssistantTurn, TextChunk, ThinkingChunk, detect_provider
 from compaction import maybe_compact, estimate_tokens, get_context_limit, compact_messages
+from context_gc import GCState
 import logging_utils as _log
 import quota as _quota
 from circuit_breaker import CircuitOpenError as _CircuitOpenError
@@ -32,6 +33,9 @@ class AgentState:
     total_input_tokens:  int = 0
     total_output_tokens: int = 0
     turn_count: int = 0
+    # Persisted so trashed_ids, snippets and notes survive /save and /load.
+    # Without this, restoring a session leaks back tool_results the model had trashed.
+    gc_state: GCState = field(default_factory=GCState)
 
 
 @dataclass

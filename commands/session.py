@@ -55,7 +55,43 @@ def _build_session_data(state, session_id: str | None = None) -> dict:
         "turn_count": state.turn_count,
         "total_input_tokens": state.total_input_tokens,
         "total_output_tokens": state.total_output_tokens,
+        "gc_state": _serialize_gc_state(getattr(state, "gc_state", None)),
     }
+
+
+def _serialize_gc_state(gc_state) -> dict:
+    """JSON-safe view of ContextGC state (trashed_ids, snippets, notes).
+
+    Must be stable across saves so trashed_ids surviving a /load cannot leak
+    back into the model's context window (the "gc_state leak" class).
+    """
+    if gc_state is None:
+        return {"trashed_ids": [], "snippets": {}, "notes": {}}
+    return {
+        "trashed_ids": sorted(gc_state.trashed_ids),
+        "snippets": dict(gc_state.snippets),
+        "notes": dict(gc_state.notes),
+    }
+
+
+def _restore_state_from_data(state, data: dict) -> None:
+    """Apply a loaded session dict onto a state in-place.
+
+    Single point of truth for /load, /resume and /cloudsave load. Covers the
+    full AgentState surface including gc_state — forgetting any of these is
+    how the session-save/restore roundtrip drifts from in-memory state.
+    """
+    from context_gc import GCState
+    state.messages            = data.get("messages", [])
+    state.turn_count          = data.get("turn_count", 0)
+    state.total_input_tokens  = data.get("total_input_tokens", 0)
+    state.total_output_tokens = data.get("total_output_tokens", 0)
+    gc = data.get("gc_state") or {}
+    state.gc_state = GCState(
+        trashed_ids=set(gc.get("trashed_ids") or []),
+        snippets=dict(gc.get("snippets") or {}),
+        notes=dict(gc.get("notes") or {}),
+    )
 
 
 # ── /save ──────────────────────────────────────────────────────────────────
@@ -312,10 +348,7 @@ def cmd_load(args: str, state, config) -> bool:
     except Exception as e:
         err(f"Cannot read session file: {e}")
         return True
-    state.messages = data.get("messages", [])
-    state.turn_count = data.get("turn_count", 0)
-    state.total_input_tokens = data.get("total_input_tokens", 0)
-    state.total_output_tokens = data.get("total_output_tokens", 0)
+    _restore_state_from_data(state, data)
     ok(f"Session loaded from {path} ({len(state.messages)} messages)")
     return True
 
@@ -353,10 +386,7 @@ def cmd_resume(args: str, state, config) -> bool:
     except Exception as e:
         err(f"Cannot read session file: {e}")
         return True
-    state.messages = data.get("messages", [])
-    state.turn_count = data.get("turn_count", 0)
-    state.total_input_tokens = data.get("total_input_tokens", 0)
-    state.total_output_tokens = data.get("total_output_tokens", 0)
+    _restore_state_from_data(state, data)
     ok(f"Session loaded from {path} ({len(state.messages)} messages)")
     return True
 
@@ -522,10 +552,7 @@ def cmd_cloudsave(args: str, state, config) -> bool:
         if err_msg:
             err(err_msg)
             return True
-        state.messages = data.get("messages", [])
-        state.turn_count = data.get("turn_count", 0)
-        state.total_input_tokens = data.get("total_input_tokens", 0)
-        state.total_output_tokens = data.get("total_output_tokens", 0)
+        _restore_state_from_data(state, data)
         ok(f"Session loaded from Gist ({len(state.messages)} messages).")
         return True
 
