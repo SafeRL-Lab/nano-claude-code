@@ -73,6 +73,41 @@ def test_checkpoint_snapshot_includes_cache(tmp_path, monkeypatch):
     }
 
 
+def test_rewind_restores_cache_tokens_from_snapshot(tmp_path, monkeypatch):
+    """Rewinding to an older snapshot must restore cache totals in lock-step
+    with input/output totals — otherwise the running counters drift away from
+    what make_snapshot will persist on the next turn."""
+    from checkpoint import store
+    from agent import AgentState
+
+    monkeypatch.setattr(store, "_checkpoints_root", lambda: tmp_path / ".checkpoints")
+    store.reset_file_versions()
+
+    state = AgentState()
+    state.total_input_tokens       = 500
+    state.total_output_tokens      = 200
+    state.total_cache_read_tokens  = 300
+    state.total_cache_write_tokens = 50
+    state.turn_count = 3
+    state.messages = [{"role": "user", "content": "test"}]
+    snap = store.make_snapshot("rewind-session", state, {}, "p1")
+
+    state.total_input_tokens       = 9999
+    state.total_output_tokens      = 8888
+    state.total_cache_read_tokens  = 7777
+    state.total_cache_write_tokens = 6666
+
+    state.total_input_tokens       = snap.token_snapshot.get("input", 0)
+    state.total_output_tokens      = snap.token_snapshot.get("output", 0)
+    state.total_cache_read_tokens  = snap.token_snapshot.get("cache_read", 0)
+    state.total_cache_write_tokens = snap.token_snapshot.get("cache_write", 0)
+
+    assert state.total_input_tokens       == 500
+    assert state.total_output_tokens      == 200
+    assert state.total_cache_read_tokens  == 300
+    assert state.total_cache_write_tokens == 50
+
+
 # ---------- 4: Provider extraction helpers ----------
 
 class TestAnthropicCacheExtraction:

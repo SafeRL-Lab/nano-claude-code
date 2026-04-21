@@ -102,6 +102,8 @@ def cmd_checkpoint(args: str, state, config) -> bool:
         state.turn_count = snap.turn_count
         state.total_input_tokens = snap.token_snapshot.get("input", 0)
         state.total_output_tokens = snap.token_snapshot.get("output", 0)
+        state.total_cache_read_tokens = snap.token_snapshot.get("cache_read", 0)
+        state.total_cache_write_tokens = snap.token_snapshot.get("cache_write", 0)
         results.append("conversation restored")
 
     if restore_files:
