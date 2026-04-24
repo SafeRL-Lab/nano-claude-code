@@ -118,6 +118,7 @@ internal structure.
 | [`checkpoint/`](../checkpoint) | Auto-snapshot of conversation + file state after every turn.  `types.py` data models, `store.py` backup + rewind, `hooks.py` monkey-patches `Write` / `Edit` / `NotebookEdit` to snapshot pre-edit.  Command wiring in `commands/checkpoint_plan.py`. |
 | [`plugin/`](../plugin) | Plugin install / enable / disable / update from git URLs or local paths.  `loader.py` imports user plugins and registers their `TOOL_DEFS` / `COMMAND_DEFS`; `recommend.py` scores plugin marketplace by keyword/tag match. |
 | [`monitor/`](../monitor) | AI-monitored topic subscriptions — `fetchers.py` (arxiv / stocks / crypto / news), `summarizer.py` (LLM-based), `scheduler.py` (cron-ish), `notifier.py` (Telegram/Slack/stdout), `store.py` (subscription state). |
+| [`prompts/`](../prompts) | System-prompt assets as plain Markdown — `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning) appends short, vendor-documented quirks on top; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay; `load_fragment` reads the conditional blocks.  See [`prompts/README.md`](../prompts/README.md) for the overlay-admission policy. |
 | [`modular/`](../modular) | Auto-discovered optional feature modules.  Each subdir exposes `cmd.py::COMMAND_DEFS` and/or `tools.py::TOOL_DEFS`; `modular/__init__.py::load_all_commands` picks them up at startup.  Ships with `modular/voice/`, `modular/video/`, `modular/trading/`. |
 
 ### 3. Backward-compat shims
@@ -276,24 +277,46 @@ transparently through `extra_content`.
 ### Context (system prompt) assembly
 
 `context.build_system_prompt(config)` is the only public entry point.
-It renders a single `SYSTEM_PROMPT_TEMPLATE` string and conditionally
-appends dynamic blocks:
+The prompt content itself lives in `prompts/` as plain Markdown — no
+inline strings in code — and the assembly is:
 
 ```
-SYSTEM_PROMPT_TEMPLATE.format(
-    date, cwd, platform, platform_hints,
-    git_info,         # from get_git_info()
-    claude_md,        # from get_claude_md() — walked up from cwd + global
-)
-+ memory index        # from memory.get_memory_context(), if non-empty
-+ tmux block          # large literal string, if tmux_available()
-+ plan-mode block     # if config["permission_mode"] == "plan"
+build_system_prompt(config) ->
+    pick_base_prompt(provider, model_id)     # default.md + matched overlay
+  + _render_env_block(config)                # date, cwd, platform, git, CLAUDE.md
+  + memory index                             # memory.get_memory_context(), if non-empty
+  + tmux fragment                            # prompts/fragments/tmux.md, if tmux_available()
+  + plan-mode fragment                       # prompts/fragments/plan.md, if permission_mode == "plan"
 ```
 
-All provider models see the same base template today; per-provider
-differentiation is tracked as a separate initiative.  The template and
-the tmux / plan literal strings all live in
-[`context.py`](../context.py) at roughly ~200 lines total.
+The prompt subsystem is **single base + small family overlays**:
+
+```
+prompts/
+├── select.py             # pick_base_prompt + load_fragment (lru_cache'd)
+├── base/
+│   └── default.md        # shared baseline for every model (~150-line cap)
+├── overlays/
+│   ├── claude.md         # XML-tag preference (Anthropic guide)
+│   ├── gemini.md         # explicit "Agentic Mode" framing (Gemini 3 guide)
+│   └── openai-reasoning.md  # don't narrate CoT (o1 / o3 / o4 / gpt-5-codex)
+└── fragments/
+    ├── tmux.md
+    └── plan.md
+```
+
+Every model starts from the same `default.md` (general prompt-engineering
+guidance — be concise, parallel tool calls, minimal scope, stop conditions,
+safe-vs-unsafe action list, etc.).  An overlay is appended only when the
+model has an **authoritative, vendor-documented quirk**; the overlay file
+must cite its source URL in a top-of-file `<!-- Source: ... -->` comment
+(enforced by `tests/test_prompt_size.py::test_overlay_cites_source`) and
+must be ≤ 20 lines.  Overlay routing is by **model family**, not provider
+or runtime — Qwen-3 served via DashScope, Ollama, vLLM, or OpenRouter all
+get the same prompt.
+
+Contributor guidance and the overlay-admission policy live in
+[`prompts/README.md`](../prompts/README.md).
 
 `context.py` also runs a regex scan on any CLAUDE.md content before
 inclusion — patterns like "ignore previous instructions", "you are
@@ -738,7 +761,7 @@ with Claude as the active model.
  4. maybe_compact()            messages well under 70% limit — no-op
  5. quota.check_quota()        no budget set — pass
  6. providers.stream()         detects "claude-*" → stream_anthropic()
- 7. context already built      system prompt includes anthropic.md + env
+ 7. context already built      system prompt = default.md + claude overlay + env
  8. Model responds:            "I'll read it first."
                               + tool_call[Read(file_path=".../cc_config.py")]
  9. agent._check_permission    Read is read_only → auto-approve
@@ -826,6 +849,15 @@ A collection of non-obvious traps; most bit someone at some point.
   gets loaded through `plugin/loader.py::register_plugin_tools`.
   Never call `register_tool()` directly in plugin code; the loader
   handles resolution order and scoping.
+- **Prompt files: don't recreate per-family base files**.  An earlier
+  iteration shipped `prompts/base/{anthropic,openai,gemini,kimi,deepseek}.md`
+  and routed by family.  That design duplicated content and silently
+  denied general guidance to families without a dedicated file.  We
+  collapsed back to a single `default.md` plus tiny `overlays/<family>.md`
+  for vendor-documented quirks only.  Two regression tests
+  (`test_dead_family_base_files_are_gone`, `test_overlay_cites_source`)
+  prevent silent drift back to the old shape.  See
+  [`prompts/README.md`](../prompts/README.md) for the admission policy.
 
 ---
 

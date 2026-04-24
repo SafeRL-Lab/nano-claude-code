@@ -42,9 +42,10 @@ If you remember only one thing, remember this flow:
 
 ### Model providers + prompt context + compaction
 - `providers.py` — provider detection, model metadata, API key lookup, stream adapters, neutral message format conversion.
-- `context.py` — system prompt assembly (git info, `CLAUDE.md`, memory injection).
+- `context.py` — system prompt assembly entry point (`build_system_prompt`); injects env block + memory + tmux/plan fragments around the base prompt.
+- `prompts/` — system prompt assets as plain Markdown.  `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning) appends short, vendor-documented quirks; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay.  See `prompts/README.md` for the overlay-admission policy.
 - `compaction.py` — context window management (`snip_old_tool_results` + `compact_messages`).
-- `config.py` — defaults + persistent config file handling.
+- `cc_config.py` — defaults + persistent config file handling.
 
 ---
 
@@ -132,9 +133,13 @@ Use this package for STT backend changes, audio capture behavior, and prompt-boo
 4. Update docs and provider list references.
 
 ### Change prompt/context injection
-1. Modify `context.py` (`build_system_prompt`, `get_git_info`, `get_claude_md`).
-2. If memory behavior changes, update `memory/context.py` and `memory/store.py` as needed.
-3. Validate prompt size impact via `compaction.py` behavior.
+1. **Wording changes for ALL models**: edit `prompts/base/default.md` (≤ 150 lines).
+2. **Family-specific quirk** (must be vendor-documented): add or edit `prompts/overlays/<family>.md` (≤ 20 lines, top-of-file `<!-- Source: -->` URL required), then update `_OVERLAY_RULES` in `prompts/select.py` and add a case to `tests/test_prompt_selection.py::test_overlay_routing`.
+3. **Conditional block** (only injected under runtime conditions like tmux/plan-mode): add or edit `prompts/fragments/<name>.md` and append it from `context.build_system_prompt`.
+4. **Env / memory / git assembly**: modify `context.py` helpers (`_render_env_block`, `_render_plan_fragment`, `get_git_info`, `get_claude_md`).
+5. If memory behavior changes, update `memory/context.py` and `memory/store.py` as needed.
+6. Validate prompt size impact via `compaction.py` behavior; regenerate the golden fixture if `default.md` changed:
+   `python tests/e2e_prompt_regression.py --regenerate`.
 
 ### Change compaction behavior
 1. Edit thresholds/splitting in `compaction.py`.

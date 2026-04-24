@@ -23,7 +23,7 @@ cheetahclaws/
 ├── config.py                # User config (load/save to ~/.cheetahclaws/config.json)
 ├── runtime.py               # RuntimeContext — per-session live state (NOT config)
 ├── tool_registry.py         # Central tool registry (ToolDef, register_tool)
-├── context.py               # System prompt builder
+├── context.py               # System prompt builder (assembles base + overlay + env + fragments)
 ├── compaction.py            # Context window compaction
 │
 ├── tools/                   # Tool implementations (one file per category)
@@ -48,7 +48,11 @@ cheetahclaws/
 ├── task/                    # Task tracking
 ├── ui/                      # Terminal rendering (colors, spinners, status bar)
 ├── modular/                 # Optional modules (voice, video)
-└── tests/                   # pytest suite (327+ tests)
+├── prompts/                 # System prompt assets — base/default.md (shared baseline)
+│                            #   + overlays/<family>.md (vendor-documented quirks)
+│                            #   + fragments/<name>.md (conditional blocks).
+│                            #   See prompts/README.md for the overlay-admission policy.
+└── tests/                   # pytest suite (578+ tests)
 ```
 
 ## Key Architecture Concepts
