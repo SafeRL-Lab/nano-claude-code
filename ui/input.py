@@ -18,7 +18,10 @@ try:
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
     from prompt_toolkit.completion import Completer, Completion
     from prompt_toolkit.formatted_text import ANSI
+    from prompt_toolkit.application import get_app
+    from prompt_toolkit.filters import Condition
     from prompt_toolkit.history import FileHistory, InMemoryHistory
+    from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.patch_stdout import patch_stdout
     from prompt_toolkit.styles import Style
     HAS_PROMPT_TOOLKIT = True
@@ -135,6 +138,36 @@ else:  # pragma: no cover — unreachable when prompt_toolkit is installed
             raise RuntimeError("prompt_toolkit is not installed")
 
 
+# ── Key bindings ─────────────────────────────────────────────────────────────
+if HAS_PROMPT_TOOLKIT:
+
+    @Condition
+    def _ghost_text_acceptable() -> bool:
+        """True when a history ghost-suggestion is shown and no slash menu is active."""
+        buf = get_app().current_buffer
+        if not (buf.suggestion and buf.suggestion.text):
+            return False
+        cs = buf.complete_state
+        if cs and cs.completions:
+            return False
+        return True
+
+    def _build_key_bindings() -> "KeyBindings":
+        """Tab accepts the gray history ghost-text when one is shown.
+
+        Falls through to the default Tab binding (slash-menu cycling) when the
+        filter doesn't match, so `/cmd` completion behavior is unchanged.
+        """
+        kb = KeyBindings()
+
+        @kb.add("tab", filter=_ghost_text_acceptable)
+        def _(event):
+            buf = event.current_buffer
+            buf.insert_text(buf.suggestion.text)
+
+        return kb
+
+
 # ── Session cache ────────────────────────────────────────────────────────────
 _SESSION = None
 _SESSION_HISTORY_PATH: Optional[Path] = None
@@ -167,6 +200,7 @@ def _build_session(history_path: Optional[Path]):
         enable_history_search=False,
         mouse_support=False,
         style=style,
+        key_bindings=_build_key_bindings(),
     )
 
 
