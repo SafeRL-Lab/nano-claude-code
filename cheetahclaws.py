@@ -595,6 +595,66 @@ def setup_readline(history_file: Path):
     readline.parse_and_bind("tab: complete")
 
 
+# ── Headless bridge bootstrap (used by --web / Docker server mode) ────────
+
+def _start_headless_bridges(config: dict) -> None:
+    """Auto-start configured Telegram/WeChat/Slack bridges in headless mode.
+
+    Sets up a shared ``session_ctx`` with a minimal ``run_query`` driving the
+    agent loop directly (no REPL UI). Bridges keep their existing event
+    hooks (``on_text_chunk``, ``on_tool_start``, ``on_tool_end``) for
+    streaming output back over their channel.
+    """
+    if not (config.get("telegram_token") and config.get("telegram_chat_id")) \
+            and not config.get("wechat_token") \
+            and not (config.get("slack_token") and config.get("slack_channel")):
+        return  # nothing configured — no-op
+
+    import runtime as _runtime
+    from agent import AgentState, run as _agent_run, TextChunk, ToolStart, ToolEnd
+    from context import build_system_prompt
+
+    state = AgentState(messages=[], total_input_tokens=0, total_output_tokens=0)
+    session_ctx = _runtime.get_session_ctx(config.get("_session_id", "default"))
+    session_ctx.agent_state = state
+
+    def _headless_run_query(prompt: str, is_background: bool = False) -> None:
+        system_prompt = build_system_prompt(config)
+        try:
+            for ev in _agent_run(prompt, state, config, system_prompt):
+                if isinstance(ev, TextChunk) and session_ctx.on_text_chunk:
+                    try: session_ctx.on_text_chunk(ev.text)
+                    except Exception: pass
+                elif isinstance(ev, ToolStart) and session_ctx.on_tool_start:
+                    try: session_ctx.on_tool_start(ev.name, ev.inputs or {})
+                    except Exception: pass
+                elif isinstance(ev, ToolEnd) and session_ctx.on_tool_end:
+                    try: session_ctx.on_tool_end(ev.name, str(ev.result or "")[:500])
+                    except Exception: pass
+        except Exception:
+            pass  # never let a bridge query crash the server thread
+
+    session_ctx.run_query = _headless_run_query
+
+    if config.get("telegram_token") and config.get("telegram_chat_id"):
+        if not (_btg._telegram_thread and _btg._telegram_thread.is_alive()):
+            _btg._telegram_stop.clear()
+            _btg._telegram_thread = threading.Thread(
+                target=_btg._tg_poll_loop,
+                args=(config["telegram_token"], config["telegram_chat_id"], config),
+                daemon=True,
+            )
+            _btg._telegram_thread.start()
+
+    if config.get("wechat_token"):
+        if not (_bwx._wechat_thread and _bwx._wechat_thread.is_alive()):
+            _wx_start_bridge(config)
+
+    if config.get("slack_token") and config.get("slack_channel"):
+        if not (_bslk._slack_thread and _bslk._slack_thread.is_alive()):
+            _slack_start_bridge(config)
+
+
 # ── Main REPL ──────────────────────────────────────────────────────────────
 
 def repl(config: dict, initial_prompt: str = None):
@@ -1473,6 +1533,14 @@ def main():
         sys.exit(0)
 
     if args.web:
+        from cc_config import load_config as _load_cfg
+        _cfg = _load_cfg()
+        from bootstrap import bootstrap as _bootstrap
+        _bootstrap(_cfg)
+        # Auto-start configured Telegram/WeChat/Slack bridges in the same
+        # process as the web server so a headless server deployment (Docker,
+        # systemd) gets both channels with one command.
+        _start_headless_bridges(_cfg)
         from web.server import start_web_server
         start_web_server(port=args.port, host=args.host, no_auth=args.no_auth)
         sys.exit(0)

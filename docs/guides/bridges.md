@@ -117,6 +117,8 @@ If both `telegram_token` and `telegram_chat_id` are set in `~/.cheetahclaws/conf
 ✓ Telegram bridge started (auto). Bot: @your_bot_name
 ```
 
+The bridge also auto-starts in **web-server mode** (`cheetahclaws --web`) — handy for headless / Docker deployments where you want the browser UI and the phone bridge in a single process. See [docs/guides/docker.md](docker.md).
+
 ---
 
 ## WeChat Bridge
@@ -209,6 +211,8 @@ If `wechat_token` is set in `~/.cheetahclaws/config.json`, the bridge starts aut
 ✓ WeChat bridge started.
 ```
 
+Also auto-starts in `cheetahclaws --web` (Docker / headless deployments).
+
 ---
 
 ## Slack Bridge
@@ -291,6 +295,8 @@ If `slack_token` and `slack_channel` are set in `~/.cheetahclaws/config.json`, t
 ╰───────────────────────────────────────────────╯
 ✓ Slack bridge started.
 ```
+
+Also auto-starts in `cheetahclaws --web` (Docker / headless deployments).
 
 ---
 

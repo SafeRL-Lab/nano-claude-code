@@ -42,6 +42,7 @@ Other install methods: [pip install](#alternative-install-with-pip) | [uv instal
 ## 🔥🔥🔥 News (Pacific Time)
 
  
+- Apr 30, 2026: **Docker / home-server support (#73) — `Dockerfile`, `docker-compose.yml`, `.env.example`, host Ollama via `host.docker.internal`, workspace bind-mount for Samba sharing. `--web` mode now auto-starts configured Telegram / WeChat / Slack bridges in the same process so a single container delivers browser UI + phone bridge. Plus two terminal/agent fixes: `AskUserQuestion` no longer deadlocks the terminal (#69) — synchronous render+read instead of a queue/event the agent thread can't drain. `messages_to_openai` emits `content: ""` instead of `null` for tool-only assistant turns so Ollama's OpenAI-compat endpoint stops 400-ing with `invalid message content type: <nil>`; 400 / `BadRequestError` reclassified as a non-retryable `INVALID_REQUEST` so a malformed body no longer trips the circuit breaker (#71).**
 - Apr 24, 2026: **Support Deepseek V4 models, multi-model prompt adaptation — single shared `default.md` baseline + tiny per-family overlays (Anthropic XML tags · Gemini 3 explicit Agentic Mode · OpenAI o-series no-narration). Routing is by model family, not provider/runtime — same Qwen prompt whether served via DashScope, Ollama, or OpenRouter. Overlays must cite a vendor prompting guide (≤ 20 lines, enforced by tests). DeepSeek v4 thinking-mode protocol (`reasoning_content` round-trip + `thinking: ON` by default). fix(setup-wizard): tolerate api_key_env=None for ollama/lmstudio (#59)**
 - Apr 20, 2026 (**v3.05.76**): **Research pipeline — 20 sources across academia/tech/finance/social/web + cross-platform attention heat table, publication trend sparkline, notable-citer analysis, entity extraction, multi-query expansion, side-by-side compare, saved reports, weekly trend tracking via `/monitor`, one-click `/ssj` wizard. Also including Chinese platforms: Zhihu (知乎) · Bilibili (B站) · Weibo (微博) · Rednote (小红书).**
 - Apr 18, 2026 (**v3.05.75**): **External plugin discovery via `CHEETAHCLAWS_PLUGIN_PATH` + safer dependency management; tool-history integrity fix for OpenAI-compatible providers (DeepSeek et al.); end-to-end prompt-cache token tracking across providers with full checkpoint round-trip**
@@ -963,6 +964,21 @@ Browser ──→ /chat                ──→ 9 JS modules load from /static/
 
 > **Full guide:** [docs/guides/web-ui.md](docs/guides/web-ui.md)
 
+### Docker / Home Server
+
+For headless deployments (home server with local Ollama, cloud VM, container host) the repo ships a `Dockerfile` and `docker-compose.yml`. The web UI plus any configured Telegram / WeChat / Slack bridge run together in a single container:
+
+```bash
+cp .env.example .env       # set UID/GID and any cloud API keys
+mkdir -p workspace data
+docker compose up -d --build
+# open http://<host-ip>:8080/chat
+```
+
+The container reaches an Ollama instance running on the host via `host.docker.internal:11434`. Mount `./workspace` into the container and share it over Samba to access the agent's working files from your phone or other PCs.
+
+> **Full guide:** [docs/guides/docker.md](docs/guides/docker.md)
+
 ---
 
 ## Documentation
@@ -972,6 +988,7 @@ Detailed guides have been moved to [`docs/guides/`](docs/guides/) to keep this R
 | Guide | What's Inside |
 |-------|---------------|
 | [**Web UI**](docs/guides/web-ui.md) | Chat UI, PTY terminal, API endpoints, settings panel, model switching, dark/light theme, SSE streaming, session management, authentication |
+| [**Docker / Home Server**](docs/guides/docker.md) | Dockerfile + docker-compose for home-server deployments: web UI + bridges in one container, host Ollama via `host.docker.internal`, workspace bind-mount, Samba sharing |
 | [**Reference**](docs/guides/reference.md) | CLI, 36+ commands, 33 built-in tools (incl. WebBrowse, ReadEmail, SendEmail, ReadPDF, ReadImage, ReadSpreadsheet), session search, auxiliary model, error classification, prompt injection detection, tool cache, parallel tools |
 | [**Extensions**](docs/guides/extensions.md) | Memory system, Skills, Sub-Agents, MCP servers, Plugin system, Monitor subscriptions, Autonomous Agents |
 | [**Bridges**](docs/guides/bridges.md) | Telegram, WeChat, Slack setup and remote control from your phone |
