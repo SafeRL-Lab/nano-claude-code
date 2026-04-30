@@ -59,7 +59,6 @@ py-modules = [
 ]
 packages = [
     "tools",
-    "cc_daemon",
     "cc_mcp", "memory", "monitor", "multi_agent", "plugin", "skill", "task",
     "voice", "video", "checkpoint",
     "ui", "web", "bridges", "commands",

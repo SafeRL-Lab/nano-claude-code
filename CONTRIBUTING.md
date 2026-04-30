@@ -40,8 +40,7 @@ cheetahclaws/
 ├── bridges/                 # Telegram, WeChat, Slack integrations
 ├── plugin/                  # Plugin system (install, load, manifest parsing)
 ├── skill/                   # Skill system (Markdown prompt templates)
-├── cc_daemon/               # [SPIKE] Daemon foundation reference scaffolding (validates RFC #74)
-├── cc_mcp/                  # MCP (Model Context Protocol) client & tools
+├── mcp/                     # MCP (Model Context Protocol) client & tools
 ├── memory/                  # Persistent memory system
 ├── multi_agent/             # Sub-agent spawning & worktree isolation
 ├── monitor/                 # Subscription monitoring (arxiv, stocks, news)
