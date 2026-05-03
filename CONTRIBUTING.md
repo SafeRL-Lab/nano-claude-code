@@ -42,6 +42,7 @@ cheetahclaws/
 ├── skill/                   # Skill system (Markdown prompt templates)
 ├── cc_daemon/               # [SPIKE] Daemon foundation reference scaffolding (validates RFC #74)
 ├── cc_mcp/                  # MCP (Model Context Protocol) client & tools
+├── research/lab/            # Autonomous multi-agent research engine (/lab — 9-stage state machine + sandboxed experiments + citation verifier)
 ├── memory/                  # Persistent memory system
 ├── multi_agent/             # Sub-agent spawning & worktree isolation
 ├── monitor/                 # Subscription monitoring (arxiv, stocks, news)

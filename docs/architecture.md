@@ -805,6 +805,102 @@ flow but aren't yet wired into `agent.run`).  Migrating
 `agent.run`-driven equivalents is the F-2 through F-8 work in the
 foundation roadmap.
 
+### Research Lab (`research/lab/` + `commands/lab_cmd.py` + `web/lab_*`)
+
+Autonomous multi-agent research engine — `/lab start <topic>` (CLI)
+or `POST /api/lab/runs` (web) drives 9 specialised agents through 9
+stages until an arXiv-grade Markdown preprint lands at
+`~/.cheetahclaws/research_papers/<run_id>/report.md`.
+
+Full user-facing guide:
+[`docs/guides/research-lab.md`](guides/research-lab.md).
+
+**Module map.**
+
+- `research/lab/orchestrator.py` — 9-stage state machine
+  (QUESTIONING → SURVEY → OUTLINE → IMPLEMENTATION → EXPERIMENT →
+  ANALYSIS → DRAFTING → VERIFICATION → FINALIZATION).  Each stage
+  invokes its producer agent, optional reviewer-author iteration
+  (default 2/3 reviewers passing advances; max 5 rounds force-decision
+  to avoid infinite loops), and budget tracking.  Cancellation is
+  cooperative via a per-run `cancel_check` callable.
+- `research/lab/storage.py` — SQLite at
+  `~/.cheetahclaws/research_lab.db` (separate file from the daemon's
+  `sessions.db` so neither interferes with the other).  Five additive
+  tables: `lab_runs`, `lab_stages`, `lab_messages`, `lab_artifacts`,
+  `lab_budget`, `lab_experiments`.
+- `research/lab/sandbox.py` — `subprocess.run` + `RLIMIT_CPU` +
+  `RLIMIT_AS` + workspace `cwd` for executing the Engineer's Python
+  scripts.  v0-grade isolation (good enough against an honest LLM
+  producing a heavy script; **not** a hostile-code boundary —
+  Docker is Phase 2.5).  Captures stdout/stderr, collects PNG/CSV/
+  JSON artifacts, and persists them under
+  `~/.cheetahclaws/research_papers/<run_id>/workspace/`.
+- `research/lab/verifier.py` — citation existence check against
+  three free APIs in priority order (arXiv → Semantic Scholar →
+  CrossRef).  Jaccard title similarity ≥ 0.55 + surname-overlap
+  ≥ 0.5 to count as `verified`; `not_found` is a fabrication signal.
+  Distinguishes `verification_skipped` (network failed) from
+  `not_found` (network worked but nothing matched) so we don't
+  wrongly accuse offline users' citations of being fabricated.
+- `research/lab/roles.py` — 9-role assignment with cross-family
+  model selection.  Default reviewer pool draws from three different
+  provider families (Claude / GPT / Gemini, etc.) when API keys are
+  available, to reduce same-source rubber-stamping in the
+  reviewer-author debate.  Falls back to the user's primary model
+  when fewer keys are configured.
+- `research/lab/convergence.py` — reviewer quorum rule + budget
+  status calculator.  Decision branches: pass (advance), iterate,
+  redesign (after N rounds with 0/3 passing), force-advance (max
+  rounds), budget-exhausted (skip to FINALIZATION).
+- `research/lab/output.py` — Markdown report assembly +
+  BibTeX bundle + experiment-log appendix from artifacts in storage.
+- `agent_templates/lab/*.md` — the 9 role prompts (PI, Questioner,
+  Surveyor, Designer, Engineer, Analyst, Writer, Reviewer, Lay
+  Reader).  Engineer's prompt pins a `RESULT: {...}` JSON output
+  protocol so the Analyst can parse numerical findings without
+  fabrication.
+- `commands/lab_cmd.py` — `/lab {start, status, abort, logs, resume}`.
+- `web/lab_api.py` — JSON dispatcher under `/api/lab/*`; reuses the
+  existing stdlib HTTP server.
+- `web/lab.html` — single-page vanilla-JS UI; auto-polls every 5 s
+  while a run is open; renders the final report client-side.
+
+**Why this lives in `research/lab/`** rather than a top-level
+package: the existing `research/` package already houses the
+`/research` literature pipeline + 20-source aggregator that the
+Surveyor leans on indirectly.  Putting the lab next to it keeps the
+research-toolchain code co-located.
+
+**Key invariants.**
+
+- The Analyst-to-Writer pipe means Writer is **told** to use the
+  pre-drafted Results section verbatim, materially reducing the
+  surface where the LLM could fabricate experimental numbers.
+- Per-run state is **always** in SQLite before stage transitions, so
+  a crash mid-stage is recoverable in principle (resume support is
+  Phase 2.5).
+- The verifier **never** marks `not_found` when network failure
+  prevented the lookup — the `verification_skipped` state is
+  intentional to avoid false fabrication accusations.
+- Convergence rule **always** advances after `max_rounds` regardless
+  of reviewer score — a model that loves to nitpick cannot block
+  progress.
+
+**v0 scope, intentionally not yet covered.**
+
+- Multi-tenant user isolation (Phase 4).
+- Docker-isolated experiment execution (Phase 2.5).
+- LaTeX / PDF rendering (Phase 2.5).
+- GPU pool / Modal-style compute backend (Phase 4).
+- `/lab resume <run_id>` — placeholder; orchestrator state is in
+  SQLite but the worker thread doesn't auto-resume after process
+  restart.
+- Real-time SSE event streaming — frontend polls every 5 s instead.
+- Reference-manager export beyond raw BibTeX (Zotero / Mendeley
+  integration is Phase 3).
+- Plagiarism / novelty scoring (Phase 3).
+
 ---
 
 ## Key architectural invariants
