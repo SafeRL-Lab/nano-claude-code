@@ -99,8 +99,18 @@ def _ask_user_question(
 # ── ask_input_interactive (bridge routing) ────────────────────────────────
 
 def ask_input_interactive(prompt: str, config: dict,
-                          menu_text: str = None) -> str:
-    """Route input prompt to Telegram / WeChat / Slack bridge or terminal."""
+                          menu_text: str = None,
+                          options: list[tuple[str, str]] | None = None) -> str:
+    """Route input prompt to Telegram / WeChat / Slack bridge or terminal.
+
+    `options` (optional) is a list of ``(button_label, return_value)`` pairs.
+    When set and the active bridge supports it (Telegram today), the prompt
+    is rendered as an inline_keyboard with one button per option; the user's
+    click delivers the matching return_value back through the normal input
+    event.  Bridges without inline-button support (WeChat, Slack, terminal)
+    ignore `options` — callers should put a hint like ``[y/N/a]`` in the
+    prompt text so those clients still know what to type.
+    """
     import re as _re
     import threading as _threading
     import runtime as _runtime
@@ -168,15 +178,41 @@ def ask_input_interactive(prompt: str, config: dict,
         if menu_text:
             payload += _re.sub(r'\x1b\[[0-9;]*m', '', menu_text).strip() + "\n\n"
         payload += f"❓ *Input Required*\n{clean_prompt}"
-        _session_ctx.tg_send(token, chat_id, payload)
-        evt = _threading.Event()
-        _session_ctx.tg_input_event = evt
+
+        if options:
+            # Inline-keyboard path: render real Telegram buttons. callback_data
+            # carries a short prompt id so a click on a stale prompt cannot
+            # deliver to the current waiting agent.
+            import uuid as _uuid
+            from bridges.telegram import _tg_send_keyboard
+            prompt_id = _uuid.uuid4().hex[:8]
+            keyboard = [
+                [{"text": str(label),
+                  "callback_data": f"cc:{prompt_id}:{value}"[:64]}]
+                for (label, value) in options
+            ]
+            evt = _threading.Event()
+            # Set the wiring BEFORE sending so a fast click cannot race in
+            # before tg_input_event / tg_callback_prompt_id are visible.
+            _session_ctx.tg_input_event = evt
+            _session_ctx.tg_callback_prompt_id = prompt_id
+            msg_id = _tg_send_keyboard(token, chat_id, payload, keyboard)
+            _session_ctx.tg_callback_message_id = msg_id or 0
+        else:
+            _session_ctx.tg_send(token, chat_id, payload)
+            evt = _threading.Event()
+            _session_ctx.tg_input_event = evt
+
         if not evt.wait(timeout=_INPUT_WAIT_TIMEOUT):
             _session_ctx.tg_input_event = None
+            _session_ctx.tg_callback_prompt_id = ""
+            _session_ctx.tg_callback_message_id = 0
             return "(timeout: no input received)"
         text = _session_ctx.tg_input_value.strip()
         _session_ctx.tg_input_event = None
         _session_ctx.tg_input_value = ""
+        _session_ctx.tg_callback_prompt_id = ""
+        _session_ctx.tg_callback_message_id = 0
         return text
 
     # ── Terminal ────────────────────────────────────────────────────────────

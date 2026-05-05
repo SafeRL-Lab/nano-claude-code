@@ -54,6 +54,14 @@ class RuntimeContext:
     # and makes the coupling between tools.py and each bridge explicit.
     tg_input_event:    Optional[threading.Event] = None
     tg_input_value:    str = ""
+    # Short opaque id baked into inline_keyboard callback_data so a stale
+    # click on an older prompt does not deliver the wrong value.  Empty
+    # string means "no inline-keyboard prompt is currently waiting".
+    tg_callback_prompt_id: str = ""
+    # message_id of the most recent inline-keyboard prompt — set so the
+    # callback handler can edit it (strip the keyboard, append "✓ <choice>")
+    # for clear visual feedback once the user clicks.
+    tg_callback_message_id: int = 0
     slack_input_event: Optional[threading.Event] = None
     slack_input_value: str = ""
     wx_input_event:    Optional[threading.Event] = None
