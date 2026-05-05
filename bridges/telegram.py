@@ -55,6 +55,179 @@ def _tg_send(token: str, chat_id: int, text: str):
             _tg_api(token, "sendMessage", {"chat_id": chat_id, "text": chunk})
 
 
+# Telegram bot API hard limit for sendDocument is 50 MiB; cap below that for headroom.
+_TG_FILE_MAX_BYTES = 49 * 1024 * 1024
+
+
+def _tg_send_keyboard(token: str, chat_id: int, text: str,
+                      keyboard: list[list[dict]]) -> int:
+    """Send a message with an inline keyboard. Returns message_id (0 on failure).
+
+    `keyboard` is a list of rows; each row is a list of button dicts
+    `{"text": <label>, "callback_data": <≤64 byte payload>}`.
+    Falls back to plain text (no parse_mode, no keyboard) on Markdown failure
+    so a button label / prompt with stray Markdown chars never blocks delivery.
+    """
+    md_payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown",
+        "reply_markup": {"inline_keyboard": keyboard},
+    }
+    result = _tg_api(token, "sendMessage", md_payload)
+    if not (result and result.get("ok")):
+        # Retry without parse_mode but keep the keyboard.  Use a fresh dict so
+        # the previous payload is not mutated (callers / log captures may hold
+        # a reference to it).
+        plain_kb_payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": {"inline_keyboard": keyboard},
+        }
+        result = _tg_api(token, "sendMessage", plain_kb_payload)
+    if not (result and result.get("ok")):
+        # Last resort: plain text, no keyboard. The user still sees the prompt.
+        result = _tg_api(token, "sendMessage", {"chat_id": chat_id, "text": text})
+    if result and result.get("ok"):
+        return int(result.get("result", {}).get("message_id") or 0)
+    return 0
+
+
+def _handle_callback_query(token: str, chat_id: int, cb: dict,
+                           session_ctx) -> None:
+    """Process a single inline_keyboard click.
+
+    Extracted from the poll loop so it can be unit-tested in isolation.
+    Behavior:
+      1. Reject clicks from any chat other than the configured one.
+      2. Acknowledge via answerCallbackQuery so Telegram dismisses the spinner.
+      3. Parse callback_data of the form ``cc:<prompt_id>:<value>``.
+      4. Validate prompt_id matches session_ctx.tg_callback_prompt_id (drops
+         stale clicks from a previous prompt).
+      5. Edit the original message to strip the keyboard and append
+         ``✓ <label>`` for visual confirmation.
+      6. Set session_ctx.tg_input_value and fire tg_input_event so the
+         agent thread blocked in ask_input_interactive() unblocks.
+    """
+    cb_id   = cb.get("id", "")
+    cb_data = cb.get("data", "") or ""
+    cb_chat = (cb.get("message") or {}).get("chat", {}).get("id")
+    cb_msg  = (cb.get("message") or {}).get("message_id")
+    cb_text = (cb.get("message") or {}).get("text", "") or ""
+
+    if cb_chat != chat_id:
+        if cb_id:
+            _tg_api(token, "answerCallbackQuery",
+                    {"callback_query_id": cb_id, "text": "⛔ Unauthorized"})
+        return
+
+    # Always acknowledge first so the click spinner clears even on errors below.
+    if cb_id:
+        _tg_api(token, "answerCallbackQuery", {"callback_query_id": cb_id})
+
+    if not cb_data.startswith("cc:") or cb_data.count(":") < 2:
+        return  # not one of ours
+
+    _, prompt_id, value = cb_data.split(":", 2)
+    expected = getattr(session_ctx, "tg_callback_prompt_id", "") or ""
+    if expected and expected != prompt_id:
+        # Stale click from an earlier prompt — ignore so the live prompt
+        # keeps waiting for its own button press.
+        return
+
+    # Find the human label for this value, if we can match the message text.
+    label_for_value = value
+    for line in cb_text.splitlines():
+        # Lines look like "[1] ✅ Approve — y" but the label format is owned by
+        # the caller, so just take the value verbatim if no match.
+        pass
+
+    if cb_msg:
+        new_body = cb_text + f"\n\n✓ Selected: `{label_for_value}`"
+        _tg_api(token, "editMessageText", {
+            "chat_id": chat_id, "message_id": cb_msg,
+            "text": new_body, "parse_mode": "Markdown",
+        })
+
+    evt = getattr(session_ctx, "tg_input_event", None)
+    if evt is not None:
+        session_ctx.tg_input_value = value
+        session_ctx.tg_callback_prompt_id = ""
+        session_ctx.tg_callback_message_id = 0
+        try:
+            evt.set()
+        except Exception:
+            pass
+
+
+def _tg_send_document(token: str, chat_id: int, file_path: str,
+                      caption: str | None = None) -> bool:
+    """Upload a local file to a Telegram chat as a document.
+
+    Uses multipart/form-data because urllib's JSON path can't carry binary bodies.
+    Returns True on success, False on any failure (and reports the reason in chat).
+    """
+    import os, mimetypes, uuid, urllib.request
+
+    if not os.path.isfile(file_path):
+        _tg_send(token, chat_id, f"⚠ Cannot send: file not found `{file_path}`")
+        return False
+    try:
+        size = os.path.getsize(file_path)
+    except OSError as exc:
+        _tg_send(token, chat_id, f"⚠ Cannot stat `{file_path}`: {exc}")
+        return False
+    if size <= 0:
+        _tg_send(token, chat_id, f"⚠ Skipping empty file `{file_path}`")
+        return False
+    if size > _TG_FILE_MAX_BYTES:
+        _tg_send(token, chat_id,
+                 f"⚠ File too large to send via Telegram "
+                 f"({size/1024/1024:.1f} MB > 50 MB): `{file_path}`")
+        return False
+
+    fname = os.path.basename(file_path) or "file"
+    mime = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    boundary = "----TGB" + uuid.uuid4().hex
+
+    parts: list[bytes] = []
+    def _field(name: str, value: str) -> None:
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode("utf-8"))
+
+    _field("chat_id", str(chat_id))
+    if caption:
+        _field("caption", caption[:1024])
+    parts.append(
+        f'--{boundary}\r\nContent-Disposition: form-data; name="document"; '
+        f'filename="{fname}"\r\nContent-Type: {mime}\r\n\r\n'.encode("utf-8")
+    )
+    try:
+        with open(file_path, "rb") as fh:
+            parts.append(fh.read())
+    except OSError as exc:
+        _tg_send(token, chat_id, f"⚠ Failed to read `{file_path}`: {exc}")
+        return False
+    parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+    body = b"".join(parts)
+
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+    req = urllib.request.Request(
+        url, data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            data = json.loads(resp.read())
+    except Exception as exc:
+        _tg_send(token, chat_id, f"⚠ Telegram upload failed: {exc}")
+        return False
+    if not data.get("ok"):
+        _tg_send(token, chat_id,
+                 f"⚠ Telegram rejected upload: {data.get('description', 'unknown')}")
+        return False
+    return True
+
+
 def _tg_typing_loop(token: str, chat_id: int, stop_event: threading.Event):
     """Send 'typing...' indicator every 4 seconds until stop_event is set."""
     while not stop_event.is_set():
@@ -88,7 +261,7 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict) -> str:
             result = _tg_api(token, "getUpdates", {
                 "offset": offset,
                 "timeout": 30,
-                "allowed_updates": ["message"]
+                "allowed_updates": ["message", "callback_query"]
             })
             if not result or not result.get("ok"):
                 if result:
@@ -102,6 +275,18 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict) -> str:
 
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
+
+                # Inline-keyboard click — route to the callback handler and
+                # skip the rest of the message pipeline for this update.
+                cb = update.get("callback_query")
+                if cb:
+                    try:
+                        _handle_callback_query(token, chat_id, cb, session_ctx)
+                    except Exception as _cb_exc:
+                        _log.warn("bridge_callback_error",
+                                  bridge="telegram", error=str(_cb_exc)[:200])
+                    continue
+
                 msg = update.get("message", {})
                 msg_chat_id = msg.get("chat", {}).get("id")
                 text = msg.get("text", "")
@@ -137,6 +322,41 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict) -> str:
                             continue
                     except Exception as e:
                         _tg_send(token, chat_id, f"⚠ Image error: {e}")
+                        continue
+
+                # Handle document/file uploads from the user.
+                doc_msg = msg.get("document")
+                if doc_msg and not text:
+                    file_id = doc_msg["file_id"]
+                    fname = doc_msg.get("file_name") or f"upload_{file_id[:8]}"
+                    fsize = doc_msg.get("file_size", 0)
+                    caption = msg.get("caption", "").strip()
+                    if fsize and fsize > _TG_FILE_MAX_BYTES:
+                        _tg_send(token, chat_id,
+                                 f"⚠ File too large to receive ({fsize/1024/1024:.1f} MB).")
+                        continue
+                    try:
+                        file_info = _tg_api(token, "getFile", {"file_id": file_id})
+                        if not (file_info and file_info.get("ok")):
+                            _tg_send(token, chat_id, "⚠ Could not download file.")
+                            continue
+                        import urllib.request, os, tempfile, re as _re
+                        remote_path = file_info["result"]["file_path"]
+                        url = f"https://api.telegram.org/file/bot{token}/{remote_path}"
+                        with urllib.request.urlopen(url, timeout=120) as resp:
+                            data = resp.read()
+                        # Sanitize the filename (drop path components, control chars).
+                        safe_name = _re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(fname)) or "upload"
+                        target_dir = "/workspace" if os.path.isdir("/workspace") else tempfile.gettempdir()
+                        saved = os.path.join(target_dir, safe_name)
+                        with open(saved, "wb") as fh:
+                            fh.write(data)
+                        kb = len(data) / 1024
+                        print(clr(f"\n  📩 Telegram: 📎 file '{safe_name}' ({kb:.0f} KB) → {saved}", "cyan"))
+                        _tg_send(token, chat_id, f"📎 Saved `{safe_name}` to `{saved}`")
+                        text = caption or f"I just uploaded a file at `{saved}`. Please review it."
+                    except Exception as exc:
+                        _tg_send(token, chat_id, f"⚠ File error: {exc}")
                         continue
 
                 # Handle voice messages
@@ -205,6 +425,22 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict) -> str:
                     _active_sess.send_input(text)
                     # Small acknowledgement so user knows input was received
                     _tg_send(token, chat_id, f"⌨ `{text[:60]}`")
+                    continue
+
+                # ── !sendfile <path> — explicitly mail a file to this chat ─
+                if text.strip().lower().startswith("!sendfile"):
+                    parts_sf = text.strip().split(None, 1)
+                    if len(parts_sf) < 2 or not parts_sf[1].strip():
+                        _tg_send(token, chat_id, "Usage: !sendfile <absolute_path>")
+                        continue
+                    target = parts_sf[1].strip().strip("`'\"")
+                    def _send_file_async(path, t, cid):
+                        import os
+                        cap = f"📎 {os.path.basename(path)}" if os.path.isfile(path) else None
+                        if _tg_send_document(t, cid, path, caption=cap):
+                            _tg_send(t, cid, f"✅ Sent `{os.path.basename(path)}`.")
+                    threading.Thread(target=_send_file_async,
+                                     args=(target, token, chat_id), daemon=True).start()
                     continue
 
                 # ── !agent sub-commands (remote agent control) ────────────
@@ -493,6 +729,8 @@ def _bg_runner(job, q_text: str, chat_token: str, chat_id: int,
     _last_edit = [0.0]
     _stream_lock = threading.Lock()
     _step_lines: list[str] = []     # running list of tool invocations for progress view
+    _pending_writes: list[str] = [] # file_paths from in-flight Write calls (FIFO with tool_end)
+    _sent_files: set[str] = set()   # de-dup: don't mail the same path twice per turn
 
     def _edit_msg(force: bool = False):
         text_so_far = "".join(_chunks)
@@ -523,9 +761,30 @@ def _bg_runner(job, q_text: str, chat_token: str, chat_id: int,
         # Send compact progress message (not one per tool, batched)
         if len(_step_lines) == 1 or len(_step_lines) % 3 == 0:
             _tg_send(chat_token, chat_id, step_label)
+        # Remember Write targets so we can mail the file once the tool succeeds.
+        if name == "Write":
+            fp = (inputs or {}).get("file_path")
+            if isinstance(fp, str) and fp:
+                _pending_writes.append(fp)
 
     def _on_tool_end(name: str, result: str):
         _jobs.finish_step(job.id, name, result[:80] if result else "")
+        if name == "Write" and _pending_writes:
+            fp = _pending_writes.pop(0)
+            res_lc = (result or "").lower()
+            # Skip on permission denial / explicit error from the tool dispatcher.
+            if fp in _sent_files or res_lc.startswith(("error", "denied")):
+                return
+            _sent_files.add(fp)
+            def _async_send(path):
+                import os
+                try:
+                    size = os.path.getsize(path)
+                except OSError:
+                    return
+                cap = f"📎 {os.path.basename(path)} ({size/1024:.1f} KB)"
+                _tg_send_document(chat_token, chat_id, path, caption=cap)
+            threading.Thread(target=_async_send, args=(fp,), daemon=True).start()
 
     session_ctx.on_text_chunk = _on_chunk
     session_ctx.on_tool_start = _on_tool_start

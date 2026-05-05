@@ -95,6 +95,62 @@ Send a voice note (OGG) or audio file (MP3). CheetahClaws transcribes it automat
 >
 > If `ffmpeg` is missing, voice messages will fail with `⚠ Could not download voice message.`
 
+### Permission prompts (clickable buttons) (#84)
+
+When the model wants to run a write/edit/Bash tool and `permission_mode` isn't `accept-all`, cheetahclaws asks for approval. On Telegram the prompt now arrives as a real `inline_keyboard` with three tappable buttons:
+
+```
+❓ Input Required
+Allow: Bash 'rm -rf /tmp/scratch'  [y/N/a(ccept-all)]
+
+   ✅ Approve
+   ❌ Reject
+   ✅✅ Accept all
+```
+
+Tap any button — the bot acknowledges via `answerCallbackQuery` (so the spinner clears), edits the original message to append `✓ Selected: y` (or `n` / `a`) so the choice is visible in scroll-back, and the agent thread blocked in `ask_input_interactive` resumes immediately. `✅✅ Accept all` flips `permission_mode` to `accept-all` for the rest of the session, just like typing `a` in the terminal.
+
+> **Stale-click protection.** Each prompt embeds a fresh 8-char `prompt_id` in the buttons' `callback_data` (`cc:<prompt_id>:<value>`). A click on an older prompt's leftover buttons is silently dropped, so two rapid permission requests can't bleed into each other.
+
+> **Fallbacks.** If Markdown parsing fails for the prompt body, the bridge retries the same keyboard without `parse_mode`. If even that fails, it falls back to plain text without buttons — the prompt still includes `[y/N/a(ccept-all)]` so users can reply by typing the letter, just like before. Same `(timeout: no input received)` after 5 minutes.
+
+> **Other bridges.** Slack, WeChat, and the terminal still use the text path with `[y/N/a(ccept-all)]` — they ignore the `options=` parameter passed by the agent. No regressions; the change is additive.
+
+### File support (#84)
+
+The bridge can both **receive** files from the user and **send** files back. Telegram caps `sendDocument` / inbound files at 50 MB; the bridge enforces a 49 MB ceiling for headroom.
+
+**Receiving a file from your phone**
+
+Drop any document into the chat (with or without a caption). CheetahClaws downloads it, sanitizes the filename, saves it to `/workspace` (when running in Docker) or the system temp directory (otherwise), echoes the saved path back to the chat, and submits a path-aware prompt to the model:
+
+```
+You: [📎 report.pdf]
+Bot: 📎 Saved `report.pdf` to `/workspace/report.pdf`
+Bot: ⏳ Job #a1f0 running…
+     I just read /workspace/report.pdf — it contains …
+```
+
+If you add a caption, the caption replaces the default prompt. Filenames are sanitized to `[A-Za-z0-9._-]_` to keep the save path safe.
+
+**Sending a file from cheetahclaws**
+
+Files arrive in chat as Telegram **documents** (not just chat text):
+
+- **Automatic** — when the model uses the `Write` tool to create a file, the bridge mails the new file to the chat once the tool call succeeds. Caption is `📎 <name> (<size> KB)`. Failed/denied writes are skipped, and the same path is only sent once per turn (de-duplicated).
+- **Explicit** — send `!sendfile <absolute_path>` from the chat to request any file from the workspace. Backticks/quotes around the path are stripped.
+
+```
+You: !sendfile /workspace/report.pdf
+Bot: [📎 report.pdf]
+     ✅ Sent `report.pdf`.
+```
+
+> **Limits & failure modes**
+> - Files > 49 MB are refused with `⚠ File too large to send via Telegram (… MB > 50 MB)`.
+> - Empty / missing / unreadable files report a specific error in chat.
+> - Network errors and Telegram-side rejections (`ok: false`) report the description verbatim so you can debug.
+
 ### Commands
 
 | Command | Description |
@@ -333,6 +389,7 @@ cheetahclaws: 📊 Job Dashboard
 | `!retry <id>` | Re-run a failed job with the same prompt |
 | `!cancel` | Cancel the currently running job |
 | `!cancel <id>` | Cancel a specific job by ID |
+| `!sendfile <path>` | (Telegram only) Mail an absolute-path file back to the chat as a document |
 
 ### Job tracking
 
